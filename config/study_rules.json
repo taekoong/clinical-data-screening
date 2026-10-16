@@ -7,5 +7,21 @@
   "categorical_columns": {
     "Sex": ["M", "F"],
     "AE_YN": ["Y", "N"]
-  }
+  },
+  "id_column": {
+    "column": "Subject_ID",
+    "pattern": "^SUBJ-\\d{3}$"
+  },
+  "duplicate_keys": ["Subject_ID", "Visit"],
+  "date_columns": {
+    "Visit_Date": { "min": "2026-09-01", "max": "2026-12-31" }
+  },
+  "cross_checks": [
+    {
+      "left": "SBP",
+      "op": ">",
+      "right": "DBP",
+      "detail": "수축기 혈압(SBP)이 이완기 혈압(DBP)보다 커야 합니다."
+    }
+  ]
 }

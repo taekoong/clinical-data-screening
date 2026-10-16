@@ -12,7 +12,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SEVERITY_ORDER = {"ERROR": 0, "REVIEW": 1, "INFO": 2}
 
 
-# 발견된 문제의 위치를 터미널에 출력
 def print_issues(issues, show_info=False, limit=50):
     if issues.empty:
         print("발견된 문제가 없습니다.")
