@@ -4,11 +4,13 @@ import type {
   ScreeningOutcome,
   WorkbookInfo,
   VariableType,
+  RecodePreview,
 } from "../types";
 import type { WorkerRequest, WorkerResponse } from "./protocol";
 
 // 화면은 이 인터페이스만 사용한다. 나중에 NAS 서버(API) 방식으로 바꾸면 구현만 교체하면 된다.
 export interface ScreeningEngine {
+  previewRecode(data: ArrayBuffer, sheet: string, column: string, source: string, target: string): Promise<RecodePreview>;
   inspect(
     data: ArrayBuffer,
     sheet?: string,
@@ -101,6 +103,8 @@ export function createPyodideEngine(
   const copy = (data: ArrayBuffer) => new Uint8Array(data.slice(0));
 
   return {
+    previewRecode: (data, sheet, column, source, target) =>
+      request({ type: "previewRecode", data: copy(data), sheet, column, source, target }),
     inspect: (data, sheet, variableTypes) =>
       request({ type: "inspect", data: copy(data), sheet, variableTypes }),
     validateRules: (rules) => request({ type: "validateRules", rules }),

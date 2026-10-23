@@ -5,6 +5,7 @@ import { parseCell, type CellPos } from "../cells";
 import DataGrid from "../components/DataGrid";
 import ValueText from "../components/ValueText";
 import RulesFileButton from "../components/RulesFileButton";
+import RecodePanel from "../components/RecodePanel";
 import type { ScreeningEngine } from "../engine/engine";
 import { downloadBlob, errorText, fileStem } from "../files";
 import { isNumericIssue, issueLabel, SEVERITY_LABELS } from "../issueTypes";
@@ -57,6 +58,7 @@ export default function ScreeningPage({
   const [applying, setApplying] = useState(false);
   const [editError, setEditError] = useState("");
   const [unsaved, setUnsaved] = useState(false);
+  const [recoding, setRecoding] = useState(false);
   const [summarizing, setSummarizing] = useState(false);
   const [summaryError, setSummaryError] = useState("");
   const [summaryRun, setSummaryRun] = useState<{
@@ -211,7 +213,7 @@ export default function ScreeningPage({
         <h2>1. 데이터 파일</h2>
         <DataFilePicker
           engine={engine}
-          ready={ready}
+          ready={ready && !recoding}
           dataFile={dataFile}
           onDataFile={onDataFile}
         />
@@ -250,6 +252,7 @@ export default function ScreeningPage({
                 <label>
                   {" · 연구자 지정: "}
                   <select
+                    disabled={recoding}
                     value={dataFile.variableTypes?.[profile.column] ?? ""}
                     onChange={(e) => {
                       const selected = e.target.value;
@@ -285,6 +288,7 @@ export default function ScreeningPage({
                 !ready ||
                 summarizing ||
                 applying ||
+                recoding ||
                 !Object.values(dataFile.variableTypes ?? {}).includes(
                   "continuous",
                 )
@@ -355,7 +359,7 @@ export default function ScreeningPage({
       <div>
         <button
           className="button button-primary"
-          disabled={!ready || !dataFile || running}
+          disabled={!ready || !dataFile || running || recoding}
           onClick={start}
         >
           {running ? "검사 중…" : "스크리닝 실행"}
@@ -376,8 +380,21 @@ export default function ScreeningPage({
       {run && (
         <Results
           run={run}
+          currentFile={dataFile?.bytes === run.file.bytes && dataFile.info.sheet === run.result.sheet ? dataFile : null}
+          engine={engine}
+          onRecodeBusy={setRecoding}
+          recodeDisabled={!ready || summarizing}
+          onRecodeApplied={async (file) => {
+            onDataFile(file);
+            setRun(null);
+            setEdits({});
+            setEditError("");
+            setSummaryRun(null);
+            setUnsaved(true);
+            await screen(file);
+          }}
           edits={edits}
-          busy={applying || running}
+          busy={applying || running || recoding}
           editError={editError}
           onEdit={editCell}
           onDiscard={() => setEdits({})}
@@ -393,6 +410,11 @@ const PAGE_SIZE = 200;
 
 interface ResultsProps {
   run: Run;
+  currentFile: DataFile | null;
+  engine: ScreeningEngine;
+  onRecodeBusy: (busy: boolean) => void;
+  recodeDisabled: boolean;
+  onRecodeApplied: (file: DataFile) => Promise<void>;
   edits: Edits;
   busy: boolean;
   editError: string;
@@ -404,6 +426,11 @@ interface ResultsProps {
 
 function Results({
   run,
+  currentFile,
+  engine,
+  onRecodeBusy,
+  recodeDisabled,
+  onRecodeApplied,
   edits,
   busy,
   editError,
@@ -424,6 +451,7 @@ function Results({
   const [shown, setShown] = useState(PAGE_SIZE);
   const [view, setView] = useState<"grid" | "list">("grid");
   const [selected, setSelected] = useState<CellPos | null>(null);
+  const [bulk, setBulk] = useState<{ column: string; source: string; bytes: ArrayBuffer; sheet: string } | null>(null);
 
   const issueTypes = useMemo(
     () => [...new Set(result.issues.map((i) => i.Issue_Type))],
@@ -567,6 +595,21 @@ function Results({
       </div>
 
       {view === "grid" ? (
+        <>
+        {bulk && currentFile && bulk.bytes === currentFile.bytes && bulk.sheet === currentFile.info.sheet && (
+          <RecodePanel
+            key={`${bulk.sheet}:${bulk.column}:${bulk.source}`}
+            file={currentFile}
+            engine={engine}
+            column={bulk.column}
+            initialSource={bulk.source}
+            onClose={() => setBulk(null)}
+            disabled={busy || recodeDisabled || pendingCount > 0}
+            pendingEdits={pendingCount > 0}
+            onBusy={onRecodeBusy}
+            onApplied={onRecodeApplied}
+          />
+        )}
         <DataGrid
           table={result.table}
           issues={result.issues}
@@ -575,7 +618,9 @@ function Results({
           disabled={busy}
           onSelect={setSelected}
           onEdit={onEdit}
+          onBulkChange={currentFile ? (column, source) => setBulk({ column, source, bytes: currentFile.bytes, sheet: currentFile.info.sheet }) : undefined}
         />
+        </>
       ) : result.issues.length === 0 ? (
         <p className="message message-ok">발견된 문제가 없습니다.</p>
       ) : (

@@ -35,6 +35,7 @@ interface Props {
   disabled: boolean;
   onSelect: (pos: CellPos) => void;
   onEdit: (cell: string, value: string, original: string) => void;
+  onBulkChange?: (column: string, source: string) => void;
 }
 
 export default function DataGrid({
@@ -45,6 +46,7 @@ export default function DataGrid({
   disabled,
   onSelect,
   onEdit,
+  onBulkChange,
 }: Props) {
   const [onlyIssueRows, setOnlyIssueRows] = useState(false);
   const [scrollTop, setScrollTop] = useState(0);
@@ -269,6 +271,16 @@ export default function DataGrid({
     <div className="grid-view">
       <div className="toolbar">
         <button
+          className="button"
+          disabled={!selected || disabled || !onBulkChange}
+          onClick={() => {
+            commit();
+            if (selected) onBulkChange?.(table.columns[selected.col], original);
+          }}
+        >
+          {selected ? `${table.columns[selected.col]} 값 일괄 변경` : "값 일괄 변경"}
+        </button>
+        <button
           className="button button-ghost"
           onClick={() => jump(-1)}
           disabled={!issueCells.length}
@@ -416,7 +428,15 @@ export default function DataGrid({
                   title={name}
                   className={selected?.col === col ? "current" : ""}
                 >
-                  <span className="col-letter">{columnLetter(col)}</span> {name}
+                  <button
+                    className="grid-column-select"
+                    aria-label={`${name} 열 선택`}
+                    disabled={disabled || !table.rows.length}
+                    onClick={() => select({ row: rowIndices[0] ?? 0, col })}
+                    onKeyDown={(e) => e.stopPropagation()}
+                  >
+                    <span className="col-letter">{columnLetter(col)}</span> {name}
+                  </button>
                 </th>
               ))}
             </tr>

@@ -10,6 +10,7 @@ export type WorkerRequest =
       variableTypes?: Partial<Record<string, VariableType>>;
     }
   | { type: "validateRules"; id: number; rules: Rules }
+  | { type: "previewRecode"; id: number; data: Uint8Array; sheet: string; column: string; source: string; target: string }
   | {
       type: "screen";
       id: number;

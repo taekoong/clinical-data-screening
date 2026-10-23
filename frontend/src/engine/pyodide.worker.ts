@@ -82,6 +82,12 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         });
         return;
 
+      case "previewRecode":
+        post({ type: "result", id: request.id, value: JSON.parse(call(
+          "api_preview_recode", request.data, request.sheet, request.column, request.source, request.target,
+        )) });
+        return;
+
       case "validateRules":
         post({
           type: "result",

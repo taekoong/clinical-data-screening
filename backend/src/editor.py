@@ -32,6 +32,37 @@ def display(value):
     return "" if value is None else str(value)
 
 
+def preview_recode(file_bytes, sheet, column, source, target):
+    """정확히 일치하는 값만 찾아 수정 목록을 만든다. 원본은 변경하지 않는다."""
+    if not isinstance(source, str) or not source.strip():
+        raise ValueError("기존 값을 입력하세요. 결측값 채우기는 지원하지 않습니다.")
+    if not isinstance(target, str) or not target.strip():
+        raise ValueError("바꿀 값을 입력하세요. 빈 값으로 삭제할 수 없습니다.")
+    if source == target:
+        raise ValueError("기존 값과 바꿀 값이 같습니다.")
+    book = load_workbook(BytesIO(file_bytes))
+    if sheet == LOG_SHEET or sheet not in book.sheetnames:
+        raise ValueError("재코딩할 데이터 시트를 선택하세요.")
+    ws = book[sheet]
+    columns = [cell.column for cell in ws[1] if display(cell.value) == column]
+    if len(columns) != 1:
+        raise ValueError("열 이름이 없거나 중복되어 있습니다.")
+    edits = []
+    for row in ws.iter_rows(min_row=2, min_col=columns[0], max_col=columns[0]):
+        cell = row[0]
+        if cell.value is None or cell.data_type == "f":
+            continue
+        if display(cell.value) == source:
+            edits.append({
+                "cell": cell.coordinate,
+                "value": target,
+                "issue": "CATEGORY_RECODE",
+                "as_text": True,
+                "expected_before": source,
+            })
+    return {"sheet": sheet, "column": column, "source": source, "target": target, "edits": edits}
+
+
 # 원본 엑셀의 셀 값을 고치고, 고친 내역을 Change_Log 시트에 남긴다 (서식과 다른 시트는 그대로 유지)
 def apply_edits(file_bytes, sheet, edits, changed_at=None):
     book = load_workbook(BytesIO(file_bytes))
@@ -54,7 +85,13 @@ def apply_edits(file_bytes, sheet, edits, changed_at=None):
             raise ValueError(f"{edit['cell']}: 머리글(1행)은 수정할 수 없습니다.")
 
         before = cell.value
-        cell.value = convert_value(edit["value"], before)
+        if "expected_before" in edit and display(before) != edit["expected_before"]:
+            raise ValueError(f"{cell.coordinate}: 미리보기 이후 값이 달라졌습니다. 다시 확인하세요.")
+        if edit.get("as_text"):
+            cell.value = edit["value"]
+            cell.data_type = "s"  # 숫자 코드와 '='로 시작하는 범주도 입력한 텍스트 그대로 보관
+        else:
+            cell.value = convert_value(edit["value"], before)
         log.append([
             changed_at,
             sheet,
@@ -64,6 +101,10 @@ def apply_edits(file_bytes, sheet, edits, changed_at=None):
             display(cell.value),
             edit.get("issue", ""),
         ])
+        if edit.get("as_text"):
+            for log_cell in log[log.max_row]:
+                if isinstance(log_cell.value, str):
+                    log_cell.data_type = "s"
 
     buffer = BytesIO()
     book.save(buffer)

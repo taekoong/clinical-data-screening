@@ -3,12 +3,19 @@ import json
 
 from pyodide.ffi import to_js
 
-from editor import apply_edits
+from editor import apply_edits, preview_recode
 from inspector import inspect_workbook
 from rules import validate_rules
 from screening import RulesError, run_screening
 
 _last_report = None
+
+
+def api_preview_recode(data, sheet, column, source, target):
+    return json.dumps(
+        preview_recode(bytes(data.to_py()), sheet, column, source, target),
+        ensure_ascii=False,
+    )
 
 
 def api_inspect(data, sheet, variable_types_json="{}"):

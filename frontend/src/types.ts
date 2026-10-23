@@ -42,6 +42,16 @@ export interface CellEdit {
   cell: string;
   value: string;
   issue: string;
+  as_text?: boolean;
+  expected_before?: string;
+}
+
+export interface RecodePreview {
+  sheet: string;
+  column: string;
+  source: string;
+  target: string;
+  edits: CellEdit[];
 }
 
 export type ScreeningOutcome =
