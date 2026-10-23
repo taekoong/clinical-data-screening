@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# prepare-pyodide.mjs가 내려받는 파일 (npm run prepare:pyodide)
+public/pyodide

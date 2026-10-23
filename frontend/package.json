@@ -4,12 +4,17 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "prepare:pyodide": "node scripts/prepare-pyodide.mjs",
+    "predev": "npm run prepare:pyodide",
     "dev": "vite",
+    "prebuild": "npm run prepare:pyodide",
     "build": "tsc -b && vite build",
+    "check:pyodide": "node scripts/check-pyodide.mjs",
     "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {
+    "pyodide": "314.0.7",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },

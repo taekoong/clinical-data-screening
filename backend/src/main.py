@@ -2,12 +2,11 @@
 from pathlib import Path
 import argparse
 import json
-import pandas as pd
 
-from validator import validate_data
+from screening import RulesError, run_screening
 
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parents[2]
 
 SEVERITY_ORDER = {"ERROR": 0, "REVIEW": 1, "INFO": 2}
 
@@ -46,6 +45,7 @@ def main():
     parser.add_argument("--rules", default=None)
     parser.add_argument("--show-info", action="store_true", help="INFO 등급(결측값 등)도 출력")
     parser.add_argument("--limit", type=int, default=50, help="터미널에 출력할 최대 건수")
+    parser.add_argument("--sheet", default=None, help="검사할 시트 이름 (기본: 첫 번째 시트)")
     args = parser.parse_args()
 
     input_file = Path(args.input_file)
@@ -53,32 +53,30 @@ def main():
     if not input_file.exists():
         raise FileNotFoundError(input_file)
 
-    df = pd.read_excel(input_file, sheet_name=0, dtype=object)
     rules = None
 
     if args.rules:
         with open(args.rules, "r", encoding="utf-8") as f:
             rules = json.load(f)
 
-    issues = validate_data(df, rules)
+    try:
+        result = run_screening(input_file.read_bytes(), rules, args.sheet)
+    except RulesError as e:
+        print("규칙 파일에 오류가 있어 검사를 실행하지 않았습니다.")
+        for error in e.errors:
+            print(f"  - {error}")
+        raise SystemExit(1)
 
     output_dir = BASE_DIR / "output"
     output_dir.mkdir(exist_ok=True)
 
     output_file = output_dir / f"{input_file.stem}_screening.xlsx"
+    output_file.write_bytes(result["report"])
 
-    summary = pd.DataFrame([
-        {"Metric": "Total Rows", "Value": len(df)},
-        {"Metric": "Total Columns", "Value": len(df.columns)},
-        {"Metric": "Detected Issues", "Value": len(issues)},
-        {"Metric": "Rules Applied", "Value": bool(rules)}
-    ])
+    for warning in result["warnings"]:
+        print(f"[경고] {warning}")
 
-    with pd.ExcelWriter(output_file, engine="openpyxl") as writer:
-        summary.to_excel(writer, sheet_name="Summary", index=False)
-        issues.to_excel(writer, sheet_name="Issues", index=False)
-        df.to_excel(writer, sheet_name="Raw_Data", index=False)
-
+    issues = result["issues"]
     print_issues(issues, show_info=args.show_info, limit=args.limit)
     print()
     print(f"스크리닝 완료: {len(issues)}건")
