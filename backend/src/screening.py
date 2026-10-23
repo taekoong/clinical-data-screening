@@ -29,8 +29,14 @@ def build_summary(df, issues, rules):
         "rules_applied": bool(rules),
     }
 
+def sheet_table(df):
+    return {
+        "columns": [str(col) for col in df.columns],
+        "rows": [[cell_text(value) for value in row] for row in df.itertuples(index=False)],
+    }
 
-# 결과 - 요약, 문제 목록, 사용한 규칙, 원본 데이터
+
+# 요약, 문제 목록, 사용한 규칙, 원본 데이터
 def build_report(df, issues, rules, summary, warnings, sheet):
     summary_rows = [
         {"Metric": "Sheet", "Value": sheet},

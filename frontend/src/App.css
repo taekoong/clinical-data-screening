@@ -34,7 +34,7 @@
   font-weight: 600;
 }
 
-.tabs button[aria-selected='true'] {
+.tabs button[aria-selected="true"] {
   color: var(--accent);
   border-bottom-color: var(--accent);
 }
@@ -479,7 +479,7 @@ td.value mark.mark-space {
   color: var(--muted);
 }
 
-.segmented button[aria-selected='true'] {
+.segmented button[aria-selected="true"] {
   background: var(--accent-soft);
   color: var(--accent);
 }
@@ -552,7 +552,6 @@ td.value mark.mark-space {
   overflow: auto;
   border: 1px solid var(--border);
   border-radius: 8px;
-  scroll-padding-left: 56px;
 }
 
 .grid-scroll:focus-visible {
@@ -656,4 +655,55 @@ table.grid td.cell-selected {
   height: 12px;
   border-radius: 3px;
   border: 1px solid var(--border);
+}
+
+.grid-help {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  padding: 10px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--accent-soft);
+  font-size: 0.92rem;
+}
+
+.grid-help strong {
+  color: var(--accent);
+}
+
+.grid-help span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+kbd {
+  display: inline-block;
+  min-width: 1.6em;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--surface);
+  font-family: var(--mono);
+  font-size: 0.85em;
+  text-align: center;
+  color: var(--text);
+}
+
+.formula-bar .revert-button {
+  font-size: 1.4rem;
+  padding: 4px 10px;
+}
+
+.formula-bar .revert-button:hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.formula-bar .revert-button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
