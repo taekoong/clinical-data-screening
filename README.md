@@ -41,8 +41,14 @@
 
 개발환경: Python 3.14, Node.js 22
 
-터미널 내 아래 명령어 입력으로 웹 실행이 가능합니다. 
+1. 내 PC에 파일 불러오기
+   - 터미널에 아래 내용을 입력합니다.
+```git clone https://github.com/taekoong/clinical-data-screening.git
+```
 
+2. 웹 실행하기
+- 아래 명령어 입력 시 사이트 실행이 가능합니다.
+- http://localhost:5173 로 local 접속이 가능합니다. 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install pandas openpyxl pytest
 cd frontend && npm install && npm run dev    # http://localhost:5173
