@@ -43,7 +43,9 @@
 
 1. 내 PC에 파일 불러오기
    - 터미널에 아래 내용을 입력합니다.
-```git clone https://github.com/taekoong/clinical-data-screening.git
+     
+```
+git clone https://github.com/taekoong/clinical-data-screening.git
 ```
 
 2. 웹 실행하기
