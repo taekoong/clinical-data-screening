@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { createPyodideEngine, type EngineStatus } from './engine/engine'
 import { emptyForm, type RulesForm } from './rulesForm'
 import type { WorkbookInfo } from './types'
@@ -19,6 +19,9 @@ export interface RulesDraft {
   form: RulesForm
 }
 
+// 규칙 편집 내용의 자동 저장 상태 (null: 이번에 아직 편집하지 않음)
+export type AutoSave = { state: 'saved'; at: Date } | { state: 'failed' } | null
+
 type Tab = 'screening' | 'rules'
 
 const DRAFT_KEY = 'clinical-screening:rules-draft'
@@ -33,20 +36,29 @@ function loadDraft(): RulesDraft {
   return { name: '', form: emptyForm() }
 }
 
+function saveDraft(draft: RulesDraft) {
+  try {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
+    return true
+  } catch {
+    // 개인정보 보호 모드 등 저장소를 쓸 수 없는 환경
+    return false
+  }
+}
+
 function App() {
   const [status, setStatus] = useState<EngineStatus>({ state: 'loading', message: '검사 엔진을 준비하는 중…' })
   const engine = useMemo(() => createPyodideEngine(setStatus), [])
   const [tab, setTab] = useState<Tab>('screening')
   const [dataFile, setDataFile] = useState<DataFile | null>(null)
   const [draft, setDraft] = useState<RulesDraft>(loadDraft)
+  const [autoSave, setAutoSave] = useState<AutoSave>(null)
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
-    } catch {
-      // 저장 실패는 무시 (새로고침하면 편집 내용이 사라질 뿐)
-    }
-  }, [draft])
+  // 규칙은 고칠 때마다 이 브라우저에 자동 저장되고, 스크리닝에도 바로 적용된다
+  function updateDraft(next: RulesDraft) {
+    setDraft(next)
+    setAutoSave(saveDraft(next) ? { state: 'saved', at: new Date() } : { state: 'failed' })
+  }
 
   return (
     <div className="app">
@@ -76,7 +88,7 @@ function App() {
             dataFile={dataFile}
             onDataFile={setDataFile}
             draft={draft}
-            onDraft={setDraft}
+            onDraft={updateDraft}
             onEditRules={() => setTab('rules')}
           />
         </div>
@@ -87,7 +99,9 @@ function App() {
             dataFile={dataFile}
             onDataFile={setDataFile}
             draft={draft}
-            onDraft={setDraft}
+            onDraft={updateDraft}
+            autoSave={autoSave}
+            onStartScreening={() => setTab('screening')}
           />
         </div>
       </main>

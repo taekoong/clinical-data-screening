@@ -707,3 +707,11 @@ kbd {
   opacity: 0.35;
   cursor: not-allowed;
 }
+
+/* 규칙 저장 상태 */
+.save-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}

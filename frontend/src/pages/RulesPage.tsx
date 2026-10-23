@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import type { DataFile, RulesDraft } from '../App'
+import type { AutoSave, DataFile, RulesDraft } from '../App'
 import DataFilePicker from '../components/DataFilePicker'
 import RulesFileButton from '../components/RulesFileButton'
 import type { ScreeningEngine } from '../engine/engine'
@@ -25,11 +25,22 @@ interface Props {
   onDataFile: (file: DataFile | null) => void
   draft: RulesDraft
   onDraft: (draft: RulesDraft) => void
+  autoSave: AutoSave
+  onStartScreening: () => void
 }
 
 const COLUMN_LIST_ID = 'rule-columns'
 
-export default function RulesPage({ engine, ready, dataFile, onDataFile, draft, onDraft }: Props) {
+export default function RulesPage({
+  engine,
+  ready,
+  dataFile,
+  onDataFile,
+  draft,
+  onDraft,
+  autoSave,
+  onStartScreening,
+}: Props) {
   const { form } = draft
   const rules = useMemo(() => formToRules(form), [form])
   const [ruleErrors, setRuleErrors] = useState<string[]>([])
@@ -70,7 +81,7 @@ export default function RulesPage({ engine, ready, dataFile, onDataFile, draft, 
     onDraft({ name, form: next })
   }
 
-  function save() {
+  function exportFile() {
     const json = JSON.stringify(rules, null, 2) + '\n'
     downloadBlob(new Blob([json], { type: 'application/json' }), `${draft.name.trim() || 'study_rules'}.json`)
   }
@@ -97,12 +108,16 @@ export default function RulesPage({ engine, ready, dataFile, onDataFile, draft, 
           >
             예시 규칙
           </button>
-          <button className="button button-primary" onClick={save} disabled={errors.length > 0}>
-            규칙 파일 저장
+          <button className="button" onClick={exportFile} disabled={errors.length > 0}>
+            ⬇ 규칙 파일로 내보내기
           </button>
         </div>
-        <p className="muted">
-          저장하면 JSON 파일로 내려받습니다. NAS 공유 폴더에 두면 다른 연구자도 [규칙 파일 불러오기]로 쓸 수 있습니다.
+
+        <SaveStatus autoSave={autoSave} hasErrors={errors.length > 0} onStartScreening={onStartScreening} />
+
+        <p className="muted small">
+          [규칙 파일로 내보내기]는 규칙을 JSON 파일로 내려받는 기능입니다. 누르지 않아도 이 브라우저에서는 편집한 규칙이 그대로
+          적용됩니다. 다른 PC나 다른 연구자와 함께 쓰려면 파일로 내보내 NAS 공유 폴더에 두고, [규칙 파일 불러오기]로 엽니다.
         </p>
       </section>
 
@@ -273,6 +288,51 @@ export default function RulesPage({ engine, ready, dataFile, onDataFile, draft, 
         <summary>규칙 JSON 미리 보기</summary>
         <pre>{JSON.stringify(rules, null, 2)}</pre>
       </details>
+    </div>
+  )
+}
+
+// 규칙이 언제 저장·적용되는지 헷갈리지 않도록 상태를 항상 보여 준다
+function SaveStatus({
+  autoSave,
+  hasErrors,
+  onStartScreening,
+}: {
+  autoSave: AutoSave
+  hasErrors: boolean
+  onStartScreening: () => void
+}) {
+  if (autoSave?.state === 'failed') {
+    return (
+      <div className="message message-warning save-status">
+        <span className="grow">
+          <strong>이 브라우저에 자동 저장할 수 없습니다.</strong> (개인정보 보호 모드 등) 편집한 규칙은 지금 스크리닝에는
+          적용되지만, 새로고침하면 사라지니 [규칙 파일로 내보내기]로 저장해 두세요.
+        </span>
+      </div>
+    )
+  }
+
+  if (hasErrors) {
+    return (
+      <div className="message message-warning save-status">
+        <span className="grow">
+          <strong>편집 내용은 자동 저장되었습니다.</strong> 아래 오류를 고쳐야 이 규칙으로 스크리닝을 실행할 수 있습니다.
+        </span>
+      </div>
+    )
+  }
+
+  const time = autoSave?.state === 'saved' ? autoSave.at.toLocaleTimeString('ko-KR') : null
+  return (
+    <div className="message message-ok save-status">
+      <span className="grow">
+        <strong>✓ 자동 저장됨{time && ` · ${time}`}</strong> 편집한 규칙은 이 브라우저에 저장되고 [스크리닝] 탭에 바로
+        적용됩니다. 따로 저장 버튼을 누르지 않아도 됩니다.
+      </span>
+      <button className="button" onClick={onStartScreening}>
+        이 규칙으로 스크리닝 →
+      </button>
     </div>
   )
 }
