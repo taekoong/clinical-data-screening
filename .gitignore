@@ -2,3 +2,6 @@ __pycache__/
 .pytest_cache/
 .venv/
 .DS_Store
+
+# Claude Code 로컬 설정
+.claude/
