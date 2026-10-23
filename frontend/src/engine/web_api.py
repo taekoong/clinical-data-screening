@@ -11,9 +11,16 @@ from screening import RulesError, run_screening
 _last_report = None
 
 
-def api_inspect(data, sheet):
-    return json.dumps(inspect_workbook(bytes(data.to_py()), sheet or None), ensure_ascii=False)
+def api_inspect(data, sheet, variable_types_json="{}"):
+    variable_types = json.loads(variable_types_json)
 
+    result = inspect_workbook(
+        bytes(data.to_py()),
+        sheet or None,
+        variable_types,
+    )
+
+    return json.dumps(result, ensure_ascii=False)
 
 def api_validate_rules(rules_json):
     return json.dumps(validate_rules(json.loads(rules_json)), ensure_ascii=False)

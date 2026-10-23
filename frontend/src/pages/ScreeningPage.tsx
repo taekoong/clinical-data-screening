@@ -15,6 +15,8 @@ import {
   type Issue,
   type ScreeningResult,
   type Severity,
+  type WorkbookInfo,
+  type VariableType,
 } from "../types";
 
 const XLSX_TYPE =
@@ -55,6 +57,12 @@ export default function ScreeningPage({
   const [applying, setApplying] = useState(false);
   const [editError, setEditError] = useState("");
   const [unsaved, setUnsaved] = useState(false);
+  const [summarizing, setSummarizing] = useState(false);
+  const [summaryError, setSummaryError] = useState("");
+  const [summaryRun, setSummaryRun] = useState<{
+    file: DataFile;
+    results: WorkbookInfo["continuous_summary"];
+  } | null>(null);
 
   const rules = useMemo(() => formToRules(draft.form), [draft.form]);
   const ruleCount = Object.keys(rules).length;
@@ -67,6 +75,32 @@ export default function ScreeningPage({
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
   }, [unsaved, pendingCount]);
+
+  async function summarize() {
+    if (!dataFile || summarizing) return;
+    const file = dataFile;
+
+    setSummarizing(true);
+    setSummaryError("");
+    setSummaryRun(null);
+
+    try {
+      const info = await engine.inspect(
+        file.bytes,
+        file.info.sheet,
+        file.variableTypes,
+      );
+
+      setSummaryRun({
+        file,
+        results: info.continuous_summary,
+      });
+    } catch (e) {
+      setSummaryError(`요약 계산에 실패했습니다: ${errorText(e)}`);
+    } finally {
+      setSummarizing(false);
+    }
+  }
 
   async function screen(file: DataFile) {
     setRunning(true);
@@ -138,6 +172,10 @@ export default function ScreeningPage({
         name: run.file.name,
         bytes,
         info: await engine.inspect(bytes, sheet),
+        variableTypes:
+          dataFile?.bytes === run.file.bytes && dataFile?.info.sheet === sheet
+            ? dataFile.variableTypes
+            : run.file.variableTypes,
         editedCells: (run.file.editedCells ?? 0) + list.length,
       };
 
@@ -177,6 +215,111 @@ export default function ScreeningPage({
           dataFile={dataFile}
           onDataFile={onDataFile}
         />
+        {dataFile && (
+          <div>
+            <h3>변수별 데이터 요약</h3>
+            <p className="muted">
+              전체 {dataFile.info.column_count}개 변수 중{" "}
+              {Object.keys(dataFile.variableTypes ?? {}).length}개 유형 지정
+              완료
+            </p>
+            {dataFile.info.columns.map((profile) => (
+              <p key={profile.column}>
+                {profile.column}: pandas 자료형 {profile.dtype} · 추정 유형{" "}
+                {profile.type} 결측 {profile.missing}개 (
+                {profile.missing_percent}%) · 고유값 {profile.unique}개
+                {profile.values && (
+                  <span>
+                    {" · 값 분포: "}{" "}
+                    {Object.entries(profile.values)
+                      .map(([value, count]) => `${value}: ${count}개`)
+                      .join(", ")}
+                  </span>
+                )}
+                {profile.invalid !== undefined && profile.invalid > 0 && (
+                  <span>
+                    {" · 잘못된 값: "} {profile.invalid}개
+                  </span>
+                )}
+                {profile.min !== undefined && profile.max !== undefined && (
+                  <span>
+                    {" · 관측 범위: "}
+                    {profile.min} ~ {profile.max}
+                  </span>
+                )}
+                <label>
+                  {" · 연구자 지정: "}
+                  <select
+                    value={dataFile.variableTypes?.[profile.column] ?? ""}
+                    onChange={(e) => {
+                      const selected = e.target.value;
+                      const nextTypes = { ...dataFile.variableTypes };
+
+                      if (selected === "") {
+                        delete nextTypes[profile.column];
+                      } else {
+                        nextTypes[profile.column] = selected as VariableType;
+                      }
+
+                      onDataFile({
+                        ...dataFile,
+                        variableTypes: nextTypes,
+                      });
+                    }}
+                  >
+                    <option value="">Unspecified</option>
+                    <option value="identifier">Identifier</option>
+                    <option value="continuous">Continuous</option>
+                    <option value="categorical">Categorical</option>
+                    <option value="date">Date</option>
+                    <option value="text">Text</option>
+                  </select>
+                </label>
+              </p>
+            ))}
+
+            <button
+              className="button button-primary"
+              onClick={summarize}
+              disabled={
+                !ready ||
+                summarizing ||
+                applying ||
+                !Object.values(dataFile.variableTypes ?? {}).includes(
+                  "continuous",
+                )
+              }
+            >
+              {summarizing ? "계산 중…" : "연속형 변수 요약 계산"}
+            </button>
+
+            {summaryError && (
+              <p className="message message-error">{summaryError}</p>
+            )}
+
+            {summaryRun && summaryRun.file === dataFile && (
+              <div>
+                <h3>연속형 변수 요약</h3>
+                <p className="muted">
+                  결측과 변환 불가 값은 제외하며, 숫자로 읽히는 극단값은
+                  포함합니다.
+                </p>
+                {Object.entries(summaryRun.results).map(([column, result]) =>
+                  result ? (
+                    <p key={column}>
+                      {column}: 계산 가능 {result.valid_count}개 · 변환 불가{" "}
+                      {result.invalid_count}개 · 평균{" "}
+                      {result.mean?.toFixed(2) ?? "계산 불가"} · 중앙값{" "}
+                      {result.median?.toFixed(2) ?? "계산 불가"}
+                      {" · 표준편차 "}
+                      {result.std?.toFixed(2) ?? "계산 불가"}
+                    </p>
+                  ) : null,
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </section>
 
       <section className="card">
