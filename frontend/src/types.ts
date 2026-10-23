@@ -22,11 +22,18 @@ export interface Summary {
   rules_applied: boolean
 }
 
+// 검사한 시트 전체. rows[i]는 엑셀 i+2행 (1행은 머리글)
+export interface SheetTable {
+  columns: string[]
+  rows: string[][]
+}
+
 export interface ScreeningResult {
   sheet: string
   summary: Summary
   warnings: string[]
   issues: Issue[]
+  table: SheetTable
   report: Uint8Array
 }
 

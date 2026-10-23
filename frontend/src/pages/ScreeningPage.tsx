@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { DataFile, RulesDraft } from '../App'
 import DataFilePicker from '../components/DataFilePicker'
+import { parseCell, type CellPos } from '../cells'
+import DataGrid from '../components/DataGrid'
 import RulesFileButton from '../components/RulesFileButton'
 import type { ScreeningEngine } from '../engine/engine'
 import { downloadBlob, errorText, fileStem } from '../files'
@@ -225,6 +227,8 @@ function Results({ run, edits, busy, editError, onEdit, onDiscard, onApply, onSa
   const [column, setColumn] = useState('')
   const [query, setQuery] = useState('')
   const [shown, setShown] = useState(PAGE_SIZE)
+  const [view, setView] = useState<'grid' | 'list'>('grid')
+  const [selected, setSelected] = useState<CellPos | null>(null)
 
   const issueTypes = useMemo(() => [...new Set(result.issues.map((i) => i.Issue_Type))], [result])
   const columns = useMemo(() => [...new Set(result.issues.map((i) => i.Column))], [result])
@@ -246,6 +250,12 @@ function Results({ run, edits, busy, editError, onEdit, onDiscard, onApply, onSa
     else next.add(severity)
     setSeverities(next)
     setShown(PAGE_SIZE)
+  }
+
+  // 문제 목록에서 셀을 누르면 데이터 표로 가서 그 셀을 선택
+  function showInGrid(issue: Issue) {
+    setSelected(parseCell(issue.Cell))
+    setView('grid')
   }
 
   function download() {
@@ -315,7 +325,26 @@ function Results({ run, edits, busy, editError, onEdit, onDiscard, onApply, onSa
         </div>
       )}
 
-      {result.issues.length === 0 ? (
+      <div className="segmented" role="tablist">
+        <button role="tab" aria-selected={view === 'grid'} onClick={() => setView('grid')}>
+          데이터 표
+        </button>
+        <button role="tab" aria-selected={view === 'list'} onClick={() => setView('list')}>
+          문제 목록 {result.issues.length}
+        </button>
+      </div>
+
+      {view === 'grid' ? (
+        <DataGrid
+          table={result.table}
+          issues={result.issues}
+          edits={edits}
+          selected={selected}
+          disabled={busy}
+          onSelect={setSelected}
+          onEdit={onEdit}
+        />
+      ) : result.issues.length === 0 ? (
         <p className="message message-ok">발견된 문제가 없습니다.</p>
       ) : (
         <>
@@ -348,9 +377,15 @@ function Results({ run, edits, busy, editError, onEdit, onDiscard, onApply, onSa
           </div>
 
           <p className="muted">
-            {filtered.length}건 표시 · 수정값 칸에서 값을 고친 뒤 [반영하고 다시 검사]로 확인하세요.
+            {filtered.length}건 표시 · 셀 주소를 누르면 데이터 표에서 주변 값과 함께 볼 수 있습니다.
           </p>
-          <IssueTable issues={filtered.slice(0, shown)} edits={edits} disabled={busy} onEdit={onEdit} />
+          <IssueTable
+            issues={filtered.slice(0, shown)}
+            edits={edits}
+            disabled={busy}
+            onEdit={onEdit}
+            onShow={showInGrid}
+          />
           {filtered.length > shown && (
             <button className="button button-ghost" onClick={() => setShown(shown + PAGE_SIZE)}>
               {Math.min(PAGE_SIZE, filtered.length - shown)}건 더 보기 (남은 {filtered.length - shown}건)
@@ -393,9 +428,10 @@ interface IssueTableProps {
   edits: Edits
   disabled: boolean
   onEdit: (cell: string, value: string, original: string) => void
+  onShow: (issue: Issue) => void
 }
 
-function IssueTable({ issues, edits, disabled, onEdit }: IssueTableProps) {
+function IssueTable({ issues, edits, disabled, onEdit, onShow }: IssueTableProps) {
   return (
     <div className="table-wrap">
       <table>
@@ -416,7 +452,15 @@ function IssueTable({ issues, edits, disabled, onEdit }: IssueTableProps) {
               <td>
                 <span className={`severity severity-${issue.Severity}`}>{SEVERITY_LABELS[issue.Severity]}</span>
               </td>
-              <td className="mono">{issue.Cell}</td>
+              <td className="mono">
+                {issue.Excel_Row > 1 ? (
+                  <button className="link-button" onClick={() => onShow(issue)} title="데이터 표에서 보기">
+                    {issue.Cell}
+                  </button>
+                ) : (
+                  issue.Cell
+                )}
+              </td>
               <td>{issue.Column}</td>
               <td className="mono value">
                 <ValueText value={issue.Original_Value} numeric={NUMERIC_ISSUES.has(issue.Issue_Type)} />

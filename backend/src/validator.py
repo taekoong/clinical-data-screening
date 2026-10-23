@@ -28,6 +28,15 @@ def is_numeric(value):
 def is_blank(value):
     return pd.isna(value) or str(value).strip() == ""
 
+
+# 셀 값을 화면·리포트에 보여 줄 글자로: 빈 값은 "", 시각이 없는 날짜는 YYYY-MM-DD
+def cell_text(value):
+    if pd.isna(value):
+        return ""
+    if isinstance(value, datetime) and value.time() == datetime.min.time():
+        return value.date().isoformat()
+    return str(value)
+
 def get_cell(col_idx, row):
     return f"{get_column_letter(col_idx + 1)}{row}"
 
@@ -50,7 +59,7 @@ def add_issue(
         "Excel_Row": row,
         "Column": column,
         "Cell": cell,
-        "Original_Value": "" if pd.isna(value) else str(value),
+        "Original_Value": cell_text(value),
         "Issue_Type": code,
         "Severity": severity,
         "Description": detail,

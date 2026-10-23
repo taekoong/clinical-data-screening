@@ -4,7 +4,7 @@ from io import BytesIO
 import pandas as pd
 
 from rules import check_rules_against_data, validate_rules
-from validator import validate_data
+from validator import cell_text, validate_data
 
 
 class RulesError(ValueError):
@@ -69,5 +69,6 @@ def run_screening(file_bytes, rules=None, sheet=None):
         "summary": summary,
         "warnings": warnings,
         "issues": issues,
+        "table": sheet_table(df),
         "report": build_report(df, issues, rules, summary, warnings, sheet),
     }

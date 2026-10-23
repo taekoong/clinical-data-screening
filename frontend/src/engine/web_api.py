@@ -35,6 +35,7 @@ def api_screen(data, rules_json, sheet):
         "summary": result["summary"],
         "warnings": result["warnings"],
         "issues": json.loads(result["issues"].to_json(orient="records", force_ascii=False)),
+        "table": result["table"],
     }, ensure_ascii=False)
 
 

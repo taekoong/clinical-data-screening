@@ -122,3 +122,17 @@ def test_header_row_cannot_be_edited():
 ])
 def test_convert_value(text, before, expected):
     assert convert_value(text, before) == expected
+
+
+def test_table_matches_issue_cells(rules):
+    result = run_screening(TEST_FILE.read_bytes(), rules)
+    table = result["table"]
+
+    assert len(table["rows"]) == result["summary"]["total_rows"]
+    assert table["columns"][6] == "Height_cm"
+    # 문제 셀 G5 = 7번째 컬럼, 엑셀 5행 = rows[3]
+    assert table["rows"][3][6] == "17O"
+    for issue in result["issues"].itertuples():
+        if issue.Excel_Row > 1:
+            col = table["columns"].index(issue.Column)
+            assert table["rows"][issue.Excel_Row - 2][col] == issue.Original_Value
