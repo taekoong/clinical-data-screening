@@ -41,6 +41,8 @@
 
 개발환경: Python 3.14, Node.js 22
 
+터미널 내 아래 명령어 입력으로 웹 실행이 가능합니다. 
+
 ```bash
 python3 -m venv .venv && .venv/bin/pip install pandas openpyxl pytest
 cd frontend && npm install && npm run dev    # http://localhost:5173
