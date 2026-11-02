@@ -4,6 +4,7 @@ import { emptyForm, type RulesForm } from "./rulesForm";
 import type { WorkbookInfo, VariableType } from "./types";
 import ScreeningPage from "./pages/ScreeningPage";
 import RulesPage from "./pages/RulesPage";
+import VariablesPage from "./pages/VariablesPage";
 import "./App.css";
 
 export interface DataFile {
@@ -25,7 +26,7 @@ export type AutoSave =
   | { state: "failed" }
   | null;
 
-type Tab = "screening" | "rules";
+type Tab = "screening" | "rules" | "variables";
 
 const DRAFT_KEY = "clinical-screening:rules-draft";
 
@@ -98,6 +99,13 @@ function App() {
         >
           규칙 편집
         </button>
+        <button
+          role="tab"
+          aria-selected={tab === "variables"}
+          onClick={() => setTab("variables")}
+        >
+          변수 요약
+        </button>
       </nav>
 
       {/* 탭을 옮겨도 검사 결과와 고치던 값이 사라지지 않도록 두 화면을 모두 유지하고 숨기기만 한다 */}
@@ -123,6 +131,16 @@ function App() {
             onDraft={updateDraft}
             autoSave={autoSave}
             onStartScreening={() => setTab("screening")}
+          />
+        </div>
+        <div hidden={tab !== "variables"}>
+          <VariablesPage
+            engine={engine}
+            ready={status.state === "ready"}
+            dataFile={dataFile}
+            onDataFile={setDataFile}
+            draft={draft}
+            onDraft={updateDraft}
           />
         </div>
       </main>
