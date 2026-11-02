@@ -1,9 +1,40 @@
+import re
+
 import pandas as pd
 
 from validator import is_blank, is_numeric, parse_date
 
 # 설정값에 따라 범주형 값 분포 확인 범위 변동
 MAX_CATEGORIES = 10
+
+
+# 숫자지만 값 종류가 이 정도 이하면 0/1, 1/2/3처럼 코드화된 범주로 본다
+MAX_CODED_LEVELS = 5
+ID_NAME = re.compile(r"(^|[_\s])(id|no|num|number)$|^id[_\s]|번호|식별", re.IGNORECASE)
+
+
+# 변수 유형 추천과 그 이유 (연구자가 [변수 요약] 탭에서 바꿀 수 있다)
+def suggest_type(profile):
+    name, kind = profile["column"], profile["type"]
+    filled, unique = profile["filled"], profile["unique"]
+    all_unique = filled > MAX_CATEGORIES and unique == filled
+
+    if kind == "empty":
+        return "exclude", "값이 하나도 없음"
+    # 숫자로 된 ID(1001, 001 …)도 있으므로 이름이 ID 형태이고 값 종류가 많으면 ID로 본다
+    if ID_NAME.search(name) and unique > MAX_CODED_LEVELS:
+        return "identifier", "이름이 ID 형태이고 값이 행마다 다름" if unique == filled else "이름이 ID 형태"
+    if kind == "numeric":
+        if unique <= MAX_CODED_LEVELS:
+            return "categorical", f"숫자지만 값이 {unique}종류뿐이라 코드화된 범주로 추정"
+        return "continuous", "대부분 숫자"
+    if kind == "date":
+        return "date", "대부분 날짜"
+    if kind == "categorical":
+        return "categorical", f"값이 {unique}종류"
+    if all_unique:
+        return "identifier", "값이 행마다 모두 다름"
+    return "text", f"값이 {unique}종류로 많아 자유 텍스트로 추정"
 
 
 # 컬럼별 데이터 분석
@@ -32,6 +63,9 @@ def inspect_columns(df):
             profiles.append(profile)
             continue
 
+        if texts.nunique() > MAX_CATEGORIES:
+            profile["examples"] = texts.drop_duplicates().head(5).tolist()
+
         numeric_mask = texts.map(is_numeric)
         dates = values.map(parse_date)
 
@@ -57,26 +91,21 @@ def inspect_columns(df):
                 "type": "categorical",
                 "values": {str(k): int(v) for k, v in counts.items()},
             })
-        else:
-            profile["examples"] = texts.drop_duplicates().head(5).tolist()
 
         profiles.append(profile)
+
+    for profile in profiles:
+        profile["suggested"], profile["reason"] = suggest_type(profile)
 
     return profiles
 
 
-def inspect_workbook(file_bytes, sheet=None, variable_types=None):
+def inspect_workbook(file_bytes, sheet=None):
     from io import BytesIO
 
     book = pd.ExcelFile(BytesIO(file_bytes), engine="openpyxl")
     sheet = sheet or book.sheet_names[0]
     df = book.parse(sheet, dtype=object)
-    variable_types = variable_types or {}
-
-    continuous_summary = {}
-    for column in df.columns:
-        if variable_types.get(str(column)) == "continuous":
-            continuous_summary[str(column)] = summarize_continuous(df[column])
 
     return {
         "sheets": book.sheet_names,
@@ -84,18 +113,4 @@ def inspect_workbook(file_bytes, sheet=None, variable_types=None):
         "rows": int(len(df)),
         "column_count": int(len(df.columns)),
         "columns": inspect_columns(df),
-        "continuous_summary": continuous_summary,
-    }
-
-def summarize_continuous(series):
-    texts = series[~series.map(is_blank)].astype(str).str.strip()
-    numeric_mask = texts.map(is_numeric)
-    numbers = texts[numeric_mask].astype(float)
-
-    return {
-        "valid_count": int(len(numbers)),
-        "invalid_count": int((~numeric_mask).sum()),
-        "mean": float(numbers.mean()) if not numbers.empty else None,
-        "median": float(numbers.median()) if not numbers.empty else None,
-        "std": float(numbers.std(ddof=1)) if len(numbers) >= 2 else None,
     }
