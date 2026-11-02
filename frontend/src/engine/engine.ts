@@ -1,5 +1,7 @@
 import type {
   CellEdit,
+  CodingPlan,
+  VariableStats,
   Rules,
   ScreeningOutcome,
   WorkbookInfo,
@@ -11,11 +13,26 @@ import type { WorkerRequest, WorkerResponse } from "./protocol";
 // 화면은 이 인터페이스만 사용한다. 나중에 NAS 서버(API) 방식으로 바꾸면 구현만 교체하면 된다.
 export interface ScreeningEngine {
   previewRecode(data: ArrayBuffer, sheet: string, column: string, source: string, target: string): Promise<RecodePreview>;
-  inspect(
+  inspect(data: ArrayBuffer, sheet?: string): Promise<WorkbookInfo>;
+  // 선택한 변수의 기술통계 (연속형: 평균·중앙값·왜도 등, 범주형: 빈도·비율)
+  // rules의 숫자 범위·날짜 기간 밖 값을 세고, excludeOutOfRange면 연속형 계산에서 뺀다
+  describe(
     data: ArrayBuffer,
-    sheet?: string,
-    variableTypes?: Partial<Record<string, VariableType>>,
-  ): Promise<WorkbookInfo>;
+    sheet: string,
+    variables: Record<string, VariableType>,
+    rules: Rules,
+    excludeOutOfRange: boolean,
+  ): Promise<VariableStats[]>;
+  // includeData: 원본 + 새 코드 컬럼 + 요약 시트 / false: 요약 시트만
+  exportVariables(
+    data: ArrayBuffer,
+    sheet: string,
+    variables: Record<string, VariableType>,
+    plan: CodingPlan,
+    includeData: boolean,
+    rules: Rules,
+    excludeOutOfRange: boolean,
+  ): Promise<ArrayBuffer>;
   validateRules(rules: Rules): Promise<string[]>;
   screen(
     data: ArrayBuffer,
@@ -105,8 +122,22 @@ export function createPyodideEngine(
   return {
     previewRecode: (data, sheet, column, source, target) =>
       request({ type: "previewRecode", data: copy(data), sheet, column, source, target }),
-    inspect: (data, sheet, variableTypes) =>
-      request({ type: "inspect", data: copy(data), sheet, variableTypes }),
+    inspect: (data, sheet) => request({ type: "inspect", data: copy(data), sheet }),
+    describe: (data, sheet, variables, rules, excludeOutOfRange) =>
+      request({ type: "describe", data: copy(data), sheet, variables, rules, excludeOutOfRange }),
+    exportVariables: async (data, sheet, variables, plan, includeData, rules, excludeOutOfRange) =>
+      toArrayBuffer(
+        await request<Uint8Array>({
+          type: "exportVariables",
+          data: copy(data),
+          sheet,
+          variables,
+          plan,
+          includeData,
+          rules,
+          excludeOutOfRange,
+        }),
+      ),
     validateRules: (rules) => request({ type: "validateRules", rules }),
     screen: (data, rules, sheet) =>
       request({ type: "screen", data: copy(data), rules, sheet }),
@@ -118,12 +149,16 @@ export function createPyodideEngine(
         edits,
         changedAt: localTimestamp(new Date()),
       });
-      return edited.buffer.slice(
-        edited.byteOffset,
-        edited.byteOffset + edited.byteLength,
-      ) as ArrayBuffer;
+      return toArrayBuffer(edited);
     },
   };
+}
+
+function toArrayBuffer(bytes: Uint8Array) {
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
 }
 
 // Change_Log에 남길 수정 시각 (Python 쪽은 시간대를 모르므로 PC 시각을 넘긴다)

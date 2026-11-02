@@ -5,6 +5,7 @@ import rulesSource from "../../../backend/src/rules.py?raw";
 import inspectorSource from "../../../backend/src/inspector.py?raw";
 import screeningSource from "../../../backend/src/screening.py?raw";
 import editorSource from "../../../backend/src/editor.py?raw";
+import variablesSource from "../../../backend/src/variables.py?raw";
 import webApiSource from "./web_api.py?raw";
 import type { WorkerRequest, WorkerResponse } from "./protocol";
 
@@ -14,6 +15,7 @@ const PYTHON_MODULES: Record<string, string> = {
   inspector: inspectorSource,
   screening: screeningSource,
   editor: editorSource,
+  variables: variablesSource,
   web_api: webApiSource,
 };
 
@@ -72,15 +74,44 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
           type: "result",
           id: request.id,
           value: JSON.parse(
+            call("api_inspect", request.data, request.sheet ?? ""),
+          ),
+        });
+        return;
+
+      case "describe":
+        post({
+          type: "result",
+          id: request.id,
+          value: JSON.parse(
             call(
-              "api_inspect",
+              "api_describe",
               request.data,
-              request.sheet ?? "",
-              JSON.stringify(request.variableTypes ?? {}),
+              request.sheet,
+              JSON.stringify(request.variables),
+              JSON.stringify(request.rules),
+              request.excludeOutOfRange,
             ),
           ),
         });
         return;
+
+      case "exportVariables": {
+        const file: Uint8Array = call(
+          "api_export_variables",
+          request.data,
+          request.sheet,
+          JSON.stringify(request.variables),
+          JSON.stringify(request.plan),
+          request.includeData,
+          JSON.stringify(request.rules),
+          request.excludeOutOfRange,
+        );
+        post({ type: "result", id: request.id, value: file }, [
+          file.buffer as ArrayBuffer,
+        ]);
+        return;
+      }
 
       case "previewRecode":
         post({ type: "result", id: request.id, value: JSON.parse(call(
