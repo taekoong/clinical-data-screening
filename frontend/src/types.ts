@@ -76,10 +76,10 @@ export interface Rules {
 
 export type ColumnType = "numeric" | "date" | "categorical" | "text" | "empty";
 export type VariableType =
-  | "identifier"
   | "continuous"
   | "categorical"
   | "date"
+  | "identifier"
   | "text";
 
 export interface ColumnProfile {
@@ -95,14 +95,9 @@ export interface ColumnProfile {
   values?: Record<string, number>;
   unique: number;
   examples?: string[];
-}
-
-export interface ContinuousSummary {
-  valid_count: number;
-  invalid_count: number;
-  mean: number | null;
-  median: number | null;
-  std: number | null;
+  // 추천 유형과 이유 (inspector.suggest_type). exclude: 값이 없어 요약할 것이 없음
+  suggested: VariableType | "exclude";
+  reason: string;
 }
 
 export interface WorkbookInfo {
@@ -111,5 +106,102 @@ export interface WorkbookInfo {
   rows: number;
   column_count: number;
   columns: ColumnProfile[];
-  continuous_summary: Partial<Record<string, ContinuousSummary>>;
 }
+
+interface VariableBase {
+  column: string;
+  n: number;
+  missing: number;
+  missing_percent: number;
+}
+
+export interface ContinuousStats extends VariableBase {
+  type: "continuous";
+  // 규칙의 숫자 범위와 그 밖의 값. excluded면 아래 통계와 values에서 뺐다
+  range_min: number | null;
+  range_max: number | null;
+  out_of_range: number;
+  out_of_range_examples: number[];
+  excluded: boolean;
+  valid: number;
+  invalid: number;
+  invalid_examples: string[];
+  values: number[];
+  mean: number | null;
+  std: number | null;
+  min: number | null;
+  q1: number | null;
+  median: number | null;
+  q3: number | null;
+  max: number | null;
+  skewness: number | null;
+  kurtosis: number | null;
+}
+
+export interface CategoricalStats extends VariableBase {
+  type: "categorical";
+  levels: { value: string; count: number; percent: number }[];
+}
+
+export interface DateStats extends VariableBase {
+  type: "date";
+  range_min: string | null;
+  range_max: string | null;
+  out_of_range: number;
+  out_of_range_examples: string[];
+  valid: number;
+  invalid: number;
+  invalid_examples: string[];
+  first: string | null;
+  last: string | null;
+}
+
+export interface IdentifierStats extends VariableBase {
+  type: "identifier";
+  unique: number;
+  repeated: number;
+  max_rows: number;
+  repeated_examples: { value: string; count: number }[];
+}
+
+export interface TextStats extends VariableBase {
+  type: "text";
+  unique: number;
+  top: { value: string; count: number }[];
+}
+
+export type VariableStats =
+  | ContinuousStats
+  | CategoricalStats
+  | DateStats
+  | IdentifierStats
+  | TextStats;
+
+// 코딩 설정. 저장한 JSON 파일과 Python(variables.py)이 같은 모양을 쓴다
+export interface BinPlan {
+  column: string;
+  new_column: string;
+  cuts: number[];
+  codes: number[];
+  right_closed: boolean;
+}
+
+// 범주 값에 숫자 코드를 붙인다 (M → 1)
+export interface CodePlan {
+  column: string;
+  new_column: string;
+  mapping: Record<string, number>;
+}
+
+export interface CodingPlan {
+  bins: BinPlan[];
+  codes: CodePlan[];
+}
+
+export interface CodeLevel {
+  code: number;
+  label: string;
+  sources: string[];
+}
+
+export type Codebook = Record<string, CodeLevel[]>;

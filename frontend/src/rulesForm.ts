@@ -178,3 +178,23 @@ export function draftFromWorkbook(info: WorkbookInfo): RulesForm {
 
   return form
 }
+
+// [변수 설정] 탭에서 컬럼 하나의 숫자 범위·날짜 기간을 읽고 고칠 때 쓴다 (규칙과 같은 값을 공유)
+type RangeKind = 'numeric' | 'dates'
+
+export function getRange(form: RulesForm, kind: RangeKind, column: string) {
+  const row = form[kind].find((r) => r.column.trim() === column)
+  return { min: row?.min ?? '', max: row?.max ?? '' }
+}
+
+// 둘 다 비우면 그 컬럼의 규칙을 지운다
+export function setRange(form: RulesForm, kind: RangeKind, column: string, min: string, max: string): RulesForm {
+  const rows = form[kind]
+  const index = rows.findIndex((r) => r.column.trim() === column)
+  const empty = !min.trim() && !max.trim()
+  let next: RulesForm[RangeKind]
+  if (index < 0) next = empty ? rows : [...rows, { column, min, max }]
+  else if (empty) next = rows.filter((_, i) => i !== index)
+  else next = rows.map((r, i) => (i === index ? { ...r, min, max } : r))
+  return { ...form, [kind]: next }
+}

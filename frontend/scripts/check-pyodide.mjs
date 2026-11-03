@@ -12,7 +12,7 @@ const extraWheels = JSON.parse(await readFile(join(indexURL, 'extra-wheels.json'
 const pyodide = await loadPyodide({ indexURL })
 await pyodide.loadPackage(['pandas', ...extraWheels.map((file) => indexURL + file)], { messageCallback: () => {} })
 
-for (const module of ['validator', 'rules', 'inspector', 'screening', 'editor']) {
+for (const module of ['validator', 'rules', 'inspector', 'screening', 'editor', 'variables']) {
   pyodide.FS.writeFile(`/home/pyodide/${module}.py`, await readFile(join(root, 'backend', 'src', `${module}.py`), 'utf8'))
 }
 

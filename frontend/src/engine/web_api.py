@@ -7,6 +7,7 @@ from editor import apply_edits, preview_recode
 from inspector import inspect_workbook
 from rules import validate_rules
 from screening import RulesError, run_screening
+from variables import describe_workbook, export_variables
 
 _last_report = None
 
@@ -18,16 +19,8 @@ def api_preview_recode(data, sheet, column, source, target):
     )
 
 
-def api_inspect(data, sheet, variable_types_json="{}"):
-    variable_types = json.loads(variable_types_json)
-
-    result = inspect_workbook(
-        bytes(data.to_py()),
-        sheet or None,
-        variable_types,
-    )
-
-    return json.dumps(result, ensure_ascii=False)
+def api_inspect(data, sheet):
+    return json.dumps(inspect_workbook(bytes(data.to_py()), sheet or None), ensure_ascii=False)
 
 def api_validate_rules(rules_json):
     return json.dumps(validate_rules(json.loads(rules_json)), ensure_ascii=False)
@@ -59,3 +52,16 @@ def api_last_report():
 
 def api_apply_edits(data, sheet, edits_json, changed_at):
     return to_js(apply_edits(bytes(data.to_py()), sheet, json.loads(edits_json), changed_at))
+
+
+def api_describe(data, sheet, variables_json, rules_json, exclude_out_of_range):
+    return json.dumps(describe_workbook(
+        bytes(data.to_py()), sheet, json.loads(variables_json), json.loads(rules_json), exclude_out_of_range,
+    ), ensure_ascii=False)
+
+
+def api_export_variables(data, sheet, variables_json, plan_json, include_data, rules_json, exclude_out_of_range):
+    return to_js(export_variables(
+        bytes(data.to_py()), sheet, json.loads(variables_json), json.loads(plan_json), include_data,
+        json.loads(rules_json), exclude_out_of_range,
+    ))

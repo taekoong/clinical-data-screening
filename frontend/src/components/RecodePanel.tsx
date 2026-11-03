@@ -69,7 +69,7 @@ export default function RecodePanel({ file, engine, disabled, pendingEdits, onBu
     setError(null);
     try {
       const bytes = await engine.applyEdits(file.bytes, file.info.sheet, currentPreview.edits);
-      const info = await engine.inspect(bytes, file.info.sheet, file.variableTypes);
+      const info = await engine.inspect(bytes, file.info.sheet);
       // 다른 탭에서 파일이나 시트를 바꾼 경우, 이전 작업 결과로 덮어쓰지 않는다.
       if (latestFile.current !== file) return;
       const next: DataFile = {
@@ -106,7 +106,7 @@ export default function RecodePanel({ file, engine, disabled, pendingEdits, onBu
         표의 행 필터와 관계없이 이 시트의 선택한 열 전체에 적용됩니다.
       </p>
       {pendingEdits && <p className="message message-warning">셀 수정 사항을 먼저 반영하거나 취소하세요.</p>}
-      {!validColumn && <p className="muted">이 열을 일괄 변경하려면 위 변수 요약에서 연구자 지정 유형을 Categorical로 선택하세요.</p>}
+      {!validColumn && <p className="muted">이 열을 일괄 변경하려면 [변수 설정] 탭에서 이 변수를 범주형으로 지정하세요.</p>}
       <fieldset className="recode-controls" disabled={locked}>
         <div className="picker">
           <label>기존 값{" "}
