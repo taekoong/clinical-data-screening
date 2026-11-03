@@ -80,6 +80,29 @@ def describe_continuous(series, low=None, high=None, exclude=False):
         stats[name] = number_or_none(value) if len(numbers) else None
     return stats
 
+def validate_codebook(codebook):
+    errors = []
+    for column, levels in codebook.items():
+        codes, sources = set(), set()
+        for level in levels:
+            code = level.get("code")
+            if not is_numeric(code):
+                errors.append(f"{column}: 코드는 숫자여야 합니다 ({code}).")
+            elif float(code) in codes:
+                errors.append(f"{column}: 코드 {code}이 중복됩니다.")
+            else:
+                code.add(float(code))
+
+            if not str(level.get("label", "")).strip():
+                errors.append(f"{column}: 코드 {code}의 라벨을 입력하세요.")
+            if not level.get("sources"):
+                errors.append(f"{column}: 코드 {code}에 연결된 원본 값이 없습니다.")
+
+            for source in level.get("sources", []):
+                if source in sources:
+                    errors.append(f"{column}: 원본 값 '{source}'이 두 코드에 들어있습니다. ")
+                sources.add(source)
+    return errors
 
 # 범주형 변수: 값은 원본 그대로 센다 (" M"과 "M"은 다른 값으로 보여 줘야 표기 문제가 드러난다)
 def level_sort_key(value):
@@ -241,11 +264,6 @@ def validate_plan(df, variables, plan):
     for item in plan.get("codes", []):
         check_target(item, "categorical")
         mapping = item.get("mapping", {})
-        if item.get("kind", "code") == "label":
-            # 값 라벨: 1 → 상. 라벨은 글자 그대로 쓴다
-            if not any(str(label).strip() for label in mapping.values()):
-                errors.append(f"{item.get('column')}: 라벨을 하나 이상 입력하세요.")
-            continue
         if not mapping:
             errors.append(f"{item.get('column')}: 코드를 하나 이상 입력하세요.")
         bad = [value for value, code in mapping.items() if not is_numeric(code)]
@@ -274,20 +292,25 @@ def code_bins(series, item, low=None, high=None):
     return coded, codebook
 
 
-# kind="code": 글자 값에 숫자 코드 (M → 1), kind="label": 숫자 코드에 뜻 (1 → 상)
+# 범주 값에 숫자 코드를 붙인다 (M → 1)
 def code_categories(series, item):
-    if item.get("kind", "code") == "label":
-        mapping = {value: str(label).strip() for value, label in item["mapping"].items() if str(label).strip()}
-        codebook = [
-            {"Code": plain_number(value) if is_numeric(value) else value, "Meaning": label}
-            for value, label in mapping.items()
-        ]
-    else:
-        mapping = {value: plain_number(code) for value, code in item["mapping"].items()}
-        codebook = [{"Code": code, "Meaning": value} for value, code in mapping.items()]
+    mapping = {value: plain_number(code) for value, code in item["mapping"].items()}
+    codebook = [{"Code": code, "Meaning": value} for value, code in mapping.items()]
     coded = series.map(lambda v: None if is_blank(v) else mapping.get(cell_text(v)))
     return coded, codebook
 
+def apply_codebook(series, levels):
+    mapping = {
+        source: plain_number(level["code"])
+        for level in levels
+        for source in level["sources"]
+    }
+
+    def convert(value):
+        if is_blank(value):
+            return None
+        return mapping.get(cell_text(value), value)
+    return series.map(convert)
 
 def build_coding(df, plan, rules=None, exclude_out_of_range=False):
     """새 컬럼 값과 코드북을 만든다. 코드가 없는 값은 빈칸으로 두고 개수를 알려 준다."""
@@ -302,12 +325,12 @@ def build_coding(df, plan, rules=None, exclude_out_of_range=False):
                 coded, book = code_categories(series, item)
             new_column = item["new_column"].strip()
             columns[new_column] = coded
-            rule = "구간" if kind == "bins" else ("값 라벨" if item.get("kind") == "label" else "범주 코드")
+            rule = "구간" if kind == "bins" else "범주 코드"
             codebook += [{"New_Column": new_column, "Source_Column": item["column"], "Rule": rule, **row} for row in book]
 
             uncoded = int((coded.isna() & ~series.map(is_blank)).sum())
             if uncoded:
-                reason = "숫자가 아닌 값" if kind == "bins" else "코드·라벨을 정하지 않은 값"
+                reason = "숫자가 아닌 값" if kind == "bins" else "코드를 정하지 않은 값"
                 warnings.append(f"{new_column}: {reason} {uncoded}개는 빈칸으로 두었습니다.")
     return columns, codebook, warnings
 
@@ -320,11 +343,7 @@ def range_text(low, high):
     return f"{'' if low is None else low} ~ {'' if high is None else high}"
 
 
-def summary_frames(stats, plan=None):
-    labels = {
-        item["column"]: item["mapping"]
-        for item in (plan or {}).get("codes", []) if item.get("kind") == "label"
-    }
+def summary_frames(stats):
     continuous = [
         {
             "Variable": s["column"], "N": s["n"], "Missing": s["missing"], "Missing_%": s["missing_percent"],
@@ -344,12 +363,11 @@ def summary_frames(stats, plan=None):
         frequencies += [
             {
                 "Variable": s["column"], "Value": level["value"],
-                "Label": str(labels.get(s["column"], {}).get(level["value"], "")).strip(),
                 "Count": level["count"], "Percent": level["percent"],
             }
             for level in s["levels"]
         ]
-        frequencies.append({"Variable": s["column"], "Value": "(결측)", "Label": "", "Count": s["missing"], "Percent": None})
+        frequencies.append({"Variable": s["column"], "Value": "(결측)", "Count": s["missing"], "Percent": None})
     type_names = {"date": "날짜", "identifier": "ID", "text": "텍스트"}
     other = []
     for s in stats:
@@ -388,7 +406,7 @@ def export_variables(file_bytes, sheet, variables, plan, include_data=True, rule
     if errors:
         raise ValueError("\n".join(errors))
 
-    continuous, frequencies, other = summary_frames(describe_variables(df, variables, rules, exclude_out_of_range), plan)
+    continuous, frequencies, other = summary_frames(describe_variables(df, variables, rules, exclude_out_of_range))
 
     if include_data:
         book = load_workbook(BytesIO(file_bytes))

@@ -179,7 +179,7 @@ export function draftFromWorkbook(info: WorkbookInfo): RulesForm {
   return form
 }
 
-// [변수 요약] 탭에서 컬럼 하나의 숫자 범위·날짜 기간을 읽고 고칠 때 쓴다 (규칙과 같은 값을 공유)
+// [변수 설정] 탭에서 컬럼 하나의 숫자 범위·날짜 기간을 읽고 고칠 때 쓴다 (규칙과 같은 값을 공유)
 type RangeKind = 'numeric' | 'dates'
 
 export function getRange(form: RulesForm, kind: RangeKind, column: string) {

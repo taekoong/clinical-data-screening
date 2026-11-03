@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
 import { createPyodideEngine, type EngineStatus } from "./engine/engine";
 import { emptyForm, type RulesForm } from "./rulesForm";
-import type { WorkbookInfo, VariableType } from "./types";
+import type { Codebook, WorkbookInfo, VariableType } from "./types";
 import ScreeningPage from "./pages/ScreeningPage";
 import RulesPage from "./pages/RulesPage";
+import VariableSetupPage from "./pages/VariableSetupPage";
 import VariablesPage from "./pages/VariablesPage";
 import "./App.css";
 
@@ -12,6 +13,7 @@ export interface DataFile {
   bytes: ArrayBuffer;
   info: WorkbookInfo;
   variableTypes?: Partial<Record<string, VariableType>>;
+  codebook?: Codebook;
   editedCells?: number;
 }
 
@@ -26,7 +28,7 @@ export type AutoSave =
   | { state: "failed" }
   | null;
 
-type Tab = "screening" | "rules" | "variables";
+type Tab = "setup" | "rules" | "screening" | "summary";
 
 const DRAFT_KEY = "clinical-screening:rules-draft";
 
@@ -56,7 +58,7 @@ function App() {
     message: "검사 엔진을 준비하는 중…",
   });
   const engine = useMemo(() => createPyodideEngine(setStatus), []);
-  const [tab, setTab] = useState<Tab>("screening");
+  const [tab, setTab] = useState<Tab>("setup");
   const [dataFile, setDataFile] = useState<DataFile | null>(null);
   const [draft, setDraft] = useState<RulesDraft>(loadDraft);
   const [autoSave, setAutoSave] = useState<AutoSave>(null);
@@ -87,10 +89,10 @@ function App() {
       <nav className="tabs" role="tablist">
         <button
           role="tab"
-          aria-selected={tab === "screening"}
-          onClick={() => setTab("screening")}
+          aria-selected={tab === "setup"}
+          onClick={() => setTab("setup")}
         >
-          스크리닝
+          변수 설정
         </button>
         <button
           role="tab"
@@ -101,15 +103,33 @@ function App() {
         </button>
         <button
           role="tab"
-          aria-selected={tab === "variables"}
-          onClick={() => setTab("variables")}
+          aria-selected={tab === "screening"}
+          onClick={() => setTab("screening")}
         >
-          변수 요약
+          스크리닝
+        </button>
+        <button
+          role="tab"
+          aria-selected={tab === "summary"}
+          onClick={() => setTab("summary")}
+        >
+          요약·코딩
         </button>
       </nav>
 
-      {/* 탭을 옮겨도 검사 결과와 고치던 값이 사라지지 않도록 두 화면을 모두 유지하고 숨기기만 한다 */}
+      {/* 탭을 옮겨도 검사 결과와 고치던 값이 사라지지 않도록 모든 화면을 유지하고 숨기기만 한다 */}
       <main>
+        <div hidden={tab !== "setup"}>
+          <VariableSetupPage
+            engine={engine}
+            ready={status.state === "ready"}
+            dataFile={dataFile}
+            onDataFile={setDataFile}
+            draft={draft}
+            onDraft={updateDraft}
+            onNext={() => setTab("rules")}
+          />
+        </div>
         <div hidden={tab !== "screening"}>
           <ScreeningPage
             engine={engine}
@@ -133,14 +153,14 @@ function App() {
             onStartScreening={() => setTab("screening")}
           />
         </div>
-        <div hidden={tab !== "variables"}>
+        <div hidden={tab !== "summary"}>
           <VariablesPage
             engine={engine}
             ready={status.state === "ready"}
             dataFile={dataFile}
             onDataFile={setDataFile}
             draft={draft}
-            onDraft={updateDraft}
+            onGoToSetup={() => setTab("setup")}
           />
         </div>
       </main>

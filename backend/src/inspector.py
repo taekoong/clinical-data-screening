@@ -77,6 +77,8 @@ def inspect_columns(df):
                 "max": float(numbers.max()),
                 "invalid": int((~numeric_mask).sum()),
             })
+            if texts.nunique() <= MAX_CATEGORIES:
+                profile["values"] = {str(k): int(v) for k, v in texts.value_counts().items()}
         elif dates.notna().mean() >= 0.8:
             valid = dates.dropna()
             profile.update({

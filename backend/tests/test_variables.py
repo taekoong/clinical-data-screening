@@ -104,25 +104,6 @@ def test_rule_ranges_are_counted_and_optionally_excluded():
     assert [ws.cell(row=r, column=5).value for r in range(2, 9)] == [1, 2, 2, 3, None, None, None]
 
 
-def test_value_labels_for_numeric_codes():
-    book = Workbook()
-    ws = book.active
-    ws.title = "Data"
-    for row in [("Grade",), (1,), (2,), (1,), (3,), (None,)]:
-        ws.append(row)
-    buffer = BytesIO()
-    book.save(buffer)
-
-    plan = {"codes": [{"column": "Grade", "new_column": "Grade_label", "kind": "label",
-                       "mapping": {"1": "상", "2": "하", "3": ""}}]}
-    out = load_workbook(BytesIO(export_variables(buffer.getvalue(), "Data", {"Grade": "categorical"}, plan)))
-    assert [out["Data"].cell(row=r, column=2).value for r in range(1, 7)] == ["Grade_label", "상", "하", "상", None, None]
-    codebook = [[c.value for c in row] for row in out["Codebook"].iter_rows(min_row=2)]
-    assert codebook == [["Grade_label", "Grade", "값 라벨", 1, "상"], ["Grade_label", "Grade", "값 라벨", 2, "하"]]
-    frequencies = [[c.value for c in row][:3] for row in out["Frequencies"].iter_rows(min_row=2)]
-    assert frequencies[:2] == [["Grade", "1", "상"], ["Grade", "2", "하"]]
-
-
 def test_summary_only_export():
     book = load_workbook(BytesIO(export_variables(workbook(), "Data", VARIABLES, PLAN, include_data=False)))
     assert book.sheetnames == ["Continuous_Summary", "Frequencies"]

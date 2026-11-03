@@ -186,15 +186,22 @@ export interface BinPlan {
   right_closed: boolean;
 }
 
-// kind="code": 글자 값에 숫자 코드 (M → 1), kind="label": 숫자 코드에 뜻 (1 → 상)
+// 범주 값에 숫자 코드를 붙인다 (M → 1)
 export interface CodePlan {
   column: string;
   new_column: string;
-  kind: "code" | "label";
-  mapping: Record<string, number | string>;
+  mapping: Record<string, number>;
 }
 
 export interface CodingPlan {
   bins: BinPlan[];
   codes: CodePlan[];
 }
+
+export interface CodeLevel {
+  code: number;
+  label: string;
+  sources: string[];
+}
+
+export type Codebook = Record<string, CodeLevel[]>;

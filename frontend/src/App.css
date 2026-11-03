@@ -739,7 +739,7 @@ kbd {
   cursor: pointer;
 }
 
-/* 변수 요약 */
+/* 변수 설정 · 요약 */
 h3 {
   margin: 0;
   font-size: 1rem;
@@ -877,9 +877,25 @@ input[aria-invalid="true"] {
   border-color: var(--error);
 }
 
-.label-input {
-  width: 160px;
-  padding: 3px 8px;
+.auto-code-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.conversion-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.conversion-preview-table {
+  max-height: 260px;
+  max-width: 100%;
+  overflow: auto;
+  align-self: flex-start;
 }
 
 /* 변수 보기: 왼쪽 목록, 오른쪽 선택한 변수의 요약 */
