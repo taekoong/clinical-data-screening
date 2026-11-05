@@ -98,6 +98,7 @@ export interface ColumnProfile {
   // 추천 유형과 이유 (inspector.suggest_type). exclude: 값이 없어 요약할 것이 없음
   suggested: VariableType | "exclude";
   reason: string;
+  raw_values?: Record<string, number>;
 }
 
 export interface WorkbookInfo {

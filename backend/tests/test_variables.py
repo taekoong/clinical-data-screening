@@ -7,7 +7,14 @@ import pytest
 from openpyxl import Workbook, load_workbook
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from variables import describe_workbook, export_variables  # noqa: E402
+from variables import (  # noqa: E402
+    apply_codebook,
+    build_r_script,
+    describe_workbook,
+    export_analysis,
+    export_variables,
+    validate_codebook,
+)
 
 
 def workbook():
@@ -118,3 +125,60 @@ def test_summary_only_export():
 def test_invalid_plan_is_rejected(plan, message):
     with pytest.raises(ValueError, match=message):
         export_variables(workbook(), "Data", VARIABLES, plan)
+
+
+CODEBOOK = {
+    "Sex": [
+        {"code": 1, "label": "남", "sources": ["M", " M"]},
+        {"code": 0, "label": "여", "sources": ["F"]},
+    ],
+}
+
+
+def test_apply_codebook_keeps_unknown_values():
+    series = pd.Series(["M", " M", "F", "X", None], dtype=object)
+
+    result = apply_codebook(series, CODEBOOK["Sex"]).tolist()
+
+    assert result[:4] == [1, 1, 0, "X"]  # X는 스크리닝에서 잡히도록 남는다
+    assert result[4] is None
+
+
+def test_export_analysis_adds_coded_sheet_and_keeps_raw():
+    book = load_workbook(BytesIO(export_analysis(workbook(), "Data", CODEBOOK)))
+
+    assert book.sheetnames == ["Data", "Other", "Analysis_Data", "Codebook"]
+    assert [row[0].value for row in book["Data"]["C2:C8"]] == ["M", "F", "M", " M", "F", None, "M"]
+    assert [row[0].value for row in book["Analysis_Data"]["C2:C8"]] == [1, 0, 1, 1, 0, None, 1]
+    assert list(book["Codebook"].values)[1:] == [("Sex", 0, "여", "F"), ("Sex", 1, "남", "M,  M")]
+
+
+def test_export_analysis_can_run_again_on_its_output():
+    first = export_analysis(workbook(), "Data", CODEBOOK)
+    book = load_workbook(BytesIO(export_analysis(first, "Data", CODEBOOK)))
+
+    assert book.sheetnames.count("Analysis_Data") == 1
+    assert book.sheetnames.count("Codebook") == 1
+
+
+def test_r_script_sorts_levels_by_code_and_escapes_labels():
+    codebook = {"Sex": [
+        {"code": 1, "label": '남"성', "sources": ["M"]},
+        {"code": 0, "label": "여", "sources": ["F"]},
+    ]}
+
+    script = build_r_script("data_analysis.xlsx", codebook)
+
+    assert 'read_excel("data_analysis.xlsx", sheet = "Analysis_Data")' in script
+    assert 'df$`Sex` <- factor(df$`Sex`, levels = c(0, 1), labels = c("여", "남\\"성"))' in script
+
+
+@pytest.mark.parametrize("levels, message", [
+    ([{"code": "남", "label": "남", "sources": ["M"]}], "숫자"),
+    ([{"code": 1, "label": "", "sources": ["M"]}], "라벨"),
+    ([{"code": 1, "label": "남", "sources": []}], "원본 값"),
+    ([{"code": 1, "label": "남", "sources": ["M"]}, {"code": 1, "label": "여", "sources": ["F"]}], "중복"),
+    ([{"code": 1, "label": "남", "sources": ["M"]}, {"code": 0, "label": "여", "sources": ["M"]}], "두 코드"),
+])
+def test_invalid_codebook_is_rejected(levels, message):
+    assert any(message in error for error in validate_codebook({"Sex": levels}))

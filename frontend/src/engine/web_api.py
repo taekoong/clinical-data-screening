@@ -7,7 +7,7 @@ from editor import apply_edits, preview_recode
 from inspector import inspect_workbook
 from rules import validate_rules
 from screening import RulesError, run_screening
-from variables import describe_workbook, export_variables
+from variables import describe_workbook, export_variables, build_r_script, export_analysis
 
 _last_report = None
 
@@ -65,3 +65,9 @@ def api_export_variables(data, sheet, variables_json, plan_json, include_data, r
         bytes(data.to_py()), sheet, json.loads(variables_json), json.loads(plan_json), include_data,
         json.loads(rules_json), exclude_out_of_range,
     ))
+
+def api_export_analysis(data, sheet, codebook_json):
+    return to_js(export_analysis(bytes(data.to_py()), sheet, json.loads(codebook_json)))
+
+def api_r_script(file_name, codebook_json):
+    return build_r_script(file_name, json.loads(codebook_json))

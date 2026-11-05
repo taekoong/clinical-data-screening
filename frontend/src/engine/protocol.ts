@@ -1,4 +1,10 @@
-import type { CellEdit, CodingPlan, Rules, VariableType } from "../types";
+import type {
+  CellEdit,
+  CodingPlan,
+  Rules,
+  VariableType,
+  Codebook,
+} from "../types";
 
 export type WorkerRequest =
   | { type: "init"; indexURL: string }
@@ -24,7 +30,15 @@ export type WorkerRequest =
       excludeOutOfRange: boolean;
     }
   | { type: "validateRules"; id: number; rules: Rules }
-  | { type: "previewRecode"; id: number; data: Uint8Array; sheet: string; column: string; source: string; target: string }
+  | {
+      type: "previewRecode";
+      id: number;
+      data: Uint8Array;
+      sheet: string;
+      column: string;
+      source: string;
+      target: string;
+    }
   | {
       type: "screen";
       id: number;
@@ -39,7 +53,15 @@ export type WorkerRequest =
       sheet: string;
       edits: CellEdit[];
       changedAt: string;
-    };
+    }
+  | {
+      type: "exportAnalysis";
+      id: number;
+      data: Uint8Array;
+      sheet: string;
+      codebook: Codebook;
+    }
+  | { type: "rScript"; id: number; fileName: string; codebook: Codebook };
 
 export type WorkerResponse =
   | { type: "progress"; message: string }
