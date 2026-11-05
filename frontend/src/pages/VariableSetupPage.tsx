@@ -3,8 +3,19 @@ import type { DataFile, RulesDraft } from "../App";
 import DataFilePicker from "../components/DataFilePicker";
 import type { ScreeningEngine } from "../engine/engine";
 import { getRange, setRange, type RulesForm } from "../rulesForm";
-import type { ColumnProfile, VariableType } from "../types";
-import { inferredType, TYPE_HELP, TYPE_LABELS } from "../variablesPlan";
+import type { ColumnProfile, VariableType, Codebook } from "../types";
+import ValueText from "../components/ValueText";
+import { downloadBlob, errorText, fileStem } from "../files";
+import {
+  checkRows,
+  defaultRows,
+  inferredType,
+  rowsToLevels,
+  TYPE_HELP,
+  TYPE_LABELS,
+  type CodeInputs,
+  type CodeRow,
+} from "../variablesPlan";
 
 const TYPES = Object.keys(TYPE_LABELS) as VariableType[];
 
@@ -43,6 +54,7 @@ export default function VariableSetupPage({
       {dataFile && (
         <Setup
           key={`${dataFile.name}:${dataFile.info.sheet}`}
+          engine={engine}
           dataFile={dataFile}
           onDataFile={onDataFile}
           draft={draft}
@@ -57,26 +69,90 @@ export default function VariableSetupPage({
 const rowId = (column: string) => `setup-row-${encodeURIComponent(column)}`;
 
 function Setup({
+  engine,
   dataFile,
   onDataFile,
   draft,
   onDraft,
   onNext,
-}: Pick<Props, "onDataFile" | "draft" | "onDraft" | "onNext"> & {
+}: Pick<Props, "engine" | "onDataFile" | "draft" | "onDraft" | "onNext"> & {
   dataFile: DataFile;
 }) {
   const profiles = dataFile.info.columns;
   const [active, setActive] = useState(profiles[0]?.column ?? "");
+  const [codeInputs, setCodeInputs] = useState<CodeInputs>({});
+  const [exportError, setExportError] = useState("");
+  const [exporting, setExporting] = useState(false);
   const activeProfile = profiles.find((p) => p.column === active);
 
   const typeOf = (p: ColumnProfile): VariableType =>
     dataFile.variableTypes?.[p.column] ?? inferredType(p);
+
+  // 입력하지 않은 값은 기본값을 쓴다. 스크리닝에서 값이 바뀌어도 지금 데이터의 값 목록을 따른다
+  const rowsOf = (p: ColumnProfile) =>
+    defaultRows(p).map((row) => codeInputs[p.column]?.[row.source] ?? row);
+
+  const categorical = profiles.filter(
+    (p) => typeOf(p) === "categorical" && p.raw_values,
+  );
+  const codebook: Codebook = {};
+  for (const p of categorical) {
+    const levels = rowsToLevels(rowsOf(p));
+    if (levels.length) codebook[p.column] = levels;
+  }
+  const codeErrors = categorical.flatMap((p) => checkRows(p.column, rowsOf(p)));
+  const uncoded = categorical.flatMap((p) =>
+    rowsOf(p)
+      .filter((row) => !row.code.trim())
+      .map(
+        (row) => `${p.column}의 '${row.source}' ${p.raw_values![row.source]}건`,
+      ),
+  );
+  const canExport = Object.keys(codebook).length > 0 && codeErrors.length === 0;
+  const excelName = `${fileStem(dataFile.name)}_analysis.xlsx`;
 
   function setType(column: string, type: VariableType) {
     onDataFile({
       ...dataFile,
       variableTypes: { ...dataFile.variableTypes, [column]: type },
     });
+  }
+
+  function updateRow(column: string, row: CodeRow) {
+    setCodeInputs({
+      ...codeInputs,
+      [column]: { ...codeInputs[column], [row.source]: row },
+    });
+  }
+
+  async function download(kind: "excel" | "r") {
+    setExporting(true);
+    setExportError("");
+    try {
+      if (kind === "excel") {
+        const bytes = await engine.exportAnalysis(
+          dataFile.bytes,
+          dataFile.info.sheet,
+          codebook,
+        );
+        downloadBlob(
+          new Blob([bytes], {
+            type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          }),
+          excelName,
+        );
+      } else {
+        const script = await engine.rScript(excelName, codebook);
+        downloadBlob(
+          new Blob([script], { type: "text/plain;charset=utf-8" }),
+          `${fileStem(dataFile.name)}_load_data.R`,
+        );
+      }
+    } catch (e) {
+      setExportError(`파일을 만들지 못했습니다: ${errorText(e)}`);
+    } finally {
+      setExporting(false);
+    }
   }
 
   // 목록에서 ↑↓ 키로 변수를 옮겨 가며 본다
@@ -100,14 +176,23 @@ function Setup({
   return (
     <section className="card">
       <div className="section-header">
-        <h2>2. 변수 유형과 허용 범위</h2>
-        <button className="button button-primary" onClick={onNext}>
+        <h2>2. 변수 유형과 값 설정</h2>
+        <button
+          className="button button-primary"
+          onClick={() => {
+            onDataFile({ ...dataFile, codebook });
+            onNext();
+          }}
+        >
           다음: 규칙 편집 →
         </button>
       </div>
       <p className="muted">
         유형은 값을 보고 추천해 둔 것이니 틀리면 바꾸세요. 여기서 정한 유형과
-        허용 범위는 규칙 편집, 스크리닝, 요약·코딩에 모두 적용됩니다.
+        허용 범위는 규칙 편집, 스크리닝, 요약·코딩에 모두 적용됩니다. 범주형은
+        원본 값마다 숫자 코드와 라벨을 정하고, 같은 코드를 입력하면 하나로
+        묶입니다. 코드는 자동으로 채운 초안이니 확인하고, 오류로 보이는 값(X
+        등)은 코드를 비워 두세요.
       </p>
       <details className="small">
         <summary className="muted">유형별 요약 방법</summary>
@@ -206,17 +291,117 @@ function Setup({
                   onReset={(t) => setType(active, t)}
                 />
               </div>
-              <ValueRange
-                profile={activeProfile}
-                type={typeOf(activeProfile)}
-                form={draft.form}
-                onForm={(form) => onDraft({ ...draft, form })}
-              />
+              {typeOf(activeProfile) === "categorical" &&
+              activeProfile.raw_values ? (
+                <CodeTable
+                  profile={activeProfile}
+                  rows={rowsOf(activeProfile)}
+                  onRow={(row) => updateRow(active, row)}
+                />
+              ) : (
+                <ValueRange
+                  profile={activeProfile}
+                  type={typeOf(activeProfile)}
+                  form={draft.form}
+                  onForm={(form) => onDraft({ ...draft, form })}
+                />
+              )}
             </>
           )}
         </div>
       </div>
+
+      <div className="section-header">
+        <h2>3. 분석용 파일 내려받기</h2>
+        <div className="toolbar">
+          <button
+            className="button"
+            disabled={!canExport || exporting}
+            onClick={() => download("excel")}
+          >
+            분석용 엑셀
+          </button>
+          <button
+            className="button"
+            disabled={!canExport || exporting}
+            onClick={() => download("r")}
+          >
+            R 라벨 코드
+          </button>
+        </div>
+      </div>
+      <p className="muted small">
+        엑셀의 Analysis_Data 시트에는 숫자 코드가 들어가고, 같은 폴더에서 R
+        코드를 실행하면 R에서 라벨로 보입니다.
+      </p>
+      {codeErrors.length > 0 && (
+        <div className="message message-error">
+          <ul>
+            {codeErrors.map((e) => (
+              <li key={e}>{e}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {uncoded.length > 0 && (
+        <div className="message message-warning">
+          코드가 없는 값은 글자 그대로 남아 R에서 열 전체가 문자로 읽힐 수
+          있습니다: {uncoded.join(", ")}
+        </div>
+      )}
+      {exportError && <p className="message message-error">{exportError}</p>}
     </section>
+  );
+}
+
+// 범주형 변수의 원본 값마다 숫자 코드와 라벨을 정한다
+function CodeTable({
+  profile,
+  rows,
+  onRow,
+}: {
+  profile: ColumnProfile;
+  rows: CodeRow[];
+  onRow: (row: CodeRow) => void;
+}) {
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>원본 값</th>
+            <th>개수</th>
+            <th>코드</th>
+            <th>라벨</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.source}>
+              <td className="mono value">
+                <ValueText value={row.source} numeric={false} />
+              </td>
+              <td>{profile.raw_values?.[row.source]}</td>
+              <td>
+                <input
+                  aria-label={`${row.source} 코드`}
+                  size={4}
+                  value={row.code}
+                  onChange={(e) => onRow({ ...row, code: e.target.value })}
+                />
+              </td>
+              <td>
+                <input
+                  aria-label={`${row.source} 라벨`}
+                  value={row.label}
+                  onChange={(e) => onRow({ ...row, label: e.target.value })}
+                />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

@@ -114,9 +114,20 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
       }
 
       case "previewRecode":
-        post({ type: "result", id: request.id, value: JSON.parse(call(
-          "api_preview_recode", request.data, request.sheet, request.column, request.source, request.target,
-        )) });
+        post({
+          type: "result",
+          id: request.id,
+          value: JSON.parse(
+            call(
+              "api_preview_recode",
+              request.data,
+              request.sheet,
+              request.column,
+              request.source,
+              request.target,
+            ),
+          ),
+        });
         return;
 
       case "validateRules":
@@ -169,6 +180,31 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         ]);
         return;
       }
+
+      case "exportAnalysis": {
+        const file: Uint8Array = call(
+          "api_export_analysis",
+          request.data,
+          request.sheet,
+          JSON.stringify(request.codebook),
+        );
+        post({ type: "result", id: request.id, value: file }, [
+          file.buffer as ArrayBuffer,
+        ]);
+        return;
+      }
+
+      case "rScript":
+        post({
+          type: "result",
+          id: request.id,
+          value: call(
+            "api_r_script",
+            request.fileName,
+            JSON.stringify(request.codebook),
+          ),
+        });
+        return;
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

@@ -91,7 +91,7 @@ def validate_codebook(codebook):
             elif float(code) in codes:
                 errors.append(f"{column}: 코드 {code}이 중복됩니다.")
             else:
-                code.add(float(code))
+                codes.add(float(code))
 
             if not str(level.get("label", "")).strip():
                 errors.append(f"{column}: 코드 {code}의 라벨을 입력하세요.")
@@ -436,3 +436,63 @@ def export_variables(file_bytes, sheet, variables, plan, include_data=True, rule
     buffer = BytesIO()
     book.save(buffer)
     return buffer.getvalue()
+
+ANALYSIS_SHEET = "Analysis_Data"
+
+
+def export_analysis(file_bytes, sheet, codebook):
+    errors = validate_codebook(codebook)
+    if not codebook:
+        errors.append("코드를 입력한 범주형 변수가 없습니다.")
+    if sheet == ANALYSIS_SHEET:
+        errors.append("원본 데이터 시트를 선택하세요.")
+    if errors:
+        raise ValueError("\n".join(errors))
+
+    df = read_sheet(file_bytes, sheet)
+    columns = [str(column) for column in df.columns]
+    book = load_workbook(BytesIO(file_bytes))
+    if ANALYSIS_SHEET in book.sheetnames:
+        del book[ANALYSIS_SHEET]
+    ws = book.copy_worksheet(book[sheet])
+    ws.title = ANALYSIS_SHEET
+
+    rows = []
+    for column, levels in codebook.items():
+        col = columns.index(column) + 1
+        for i, value in enumerate(apply_codebook(df[column], levels)):
+            ws.cell(row=i + 2, column=col, value=None if pd.isna(value) else value)
+        for level in sorted(levels, key=lambda item: float(item["code"])):
+            rows.append({
+                "Variable": column,
+                "Code": plain_number(level["code"]),
+                "Label": level["label"],
+                "Source_Values": ", ".join(level["sources"]),
+            })
+    write_frame(book, CODEBOOK_SHEET, pd.DataFrame(rows))
+
+    buffer = BytesIO()
+    book.save(buffer)
+    return buffer.getvalue()
+
+
+def r_text(text):
+    escaped = str(text).replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+    return f'"{escaped}"'
+
+
+def build_r_script(file_name, codebook):
+    lines = [
+        "# 엑셀 파일과 같은 폴더에서 실행하세요.",
+        '# Windows: source("이_파일.R", encoding = "UTF-8")',
+        "library(readxl)",
+        f'df <- read_excel({r_text(file_name)}, sheet = "{ANALYSIS_SHEET}")',
+        "",
+    ]
+    for column, levels in codebook.items():
+        levels = sorted(levels, key=lambda item: float(item["code"]))
+        codes = ", ".join(str(plain_number(level["code"])) for level in levels)
+        labels = ", ".join(r_text(level["label"]) for level in levels)
+        name = "df$`" + column.replace("`", "\\`") + "`"
+        lines.append(f"{name} <- factor({name}, levels = c({codes}), labels = c({labels}))")
+    return "\n".join(lines) + "\n"

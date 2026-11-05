@@ -7,12 +7,19 @@ import type {
   WorkbookInfo,
   VariableType,
   RecodePreview,
+  Codebook,
 } from "../types";
 import type { WorkerRequest, WorkerResponse } from "./protocol";
 
 // 화면은 이 인터페이스만 사용한다. 나중에 NAS 서버(API) 방식으로 바꾸면 구현만 교체하면 된다.
 export interface ScreeningEngine {
-  previewRecode(data: ArrayBuffer, sheet: string, column: string, source: string, target: string): Promise<RecodePreview>;
+  previewRecode(
+    data: ArrayBuffer,
+    sheet: string,
+    column: string,
+    source: string,
+    target: string,
+  ): Promise<RecodePreview>;
   inspect(data: ArrayBuffer, sheet?: string): Promise<WorkbookInfo>;
   // 선택한 변수의 기술통계 (연속형: 평균·중앙값·왜도 등, 범주형: 빈도·비율)
   // rules의 숫자 범위·날짜 기간 밖 값을 세고, excludeOutOfRange면 연속형 계산에서 뺀다
@@ -45,6 +52,13 @@ export interface ScreeningEngine {
     sheet: string,
     edits: CellEdit[],
   ): Promise<ArrayBuffer>;
+  // ScreeningEngine 인터페이스
+  exportAnalysis(
+    data: ArrayBuffer,
+    sheet: string,
+    codebook: Codebook,
+  ): Promise<ArrayBuffer>;
+  rScript(fileName: string, codebook: Codebook): Promise<string>;
 }
 
 export type EngineStatus =
@@ -121,11 +135,34 @@ export function createPyodideEngine(
 
   return {
     previewRecode: (data, sheet, column, source, target) =>
-      request({ type: "previewRecode", data: copy(data), sheet, column, source, target }),
-    inspect: (data, sheet) => request({ type: "inspect", data: copy(data), sheet }),
+      request({
+        type: "previewRecode",
+        data: copy(data),
+        sheet,
+        column,
+        source,
+        target,
+      }),
+    inspect: (data, sheet) =>
+      request({ type: "inspect", data: copy(data), sheet }),
     describe: (data, sheet, variables, rules, excludeOutOfRange) =>
-      request({ type: "describe", data: copy(data), sheet, variables, rules, excludeOutOfRange }),
-    exportVariables: async (data, sheet, variables, plan, includeData, rules, excludeOutOfRange) =>
+      request({
+        type: "describe",
+        data: copy(data),
+        sheet,
+        variables,
+        rules,
+        excludeOutOfRange,
+      }),
+    exportVariables: async (
+      data,
+      sheet,
+      variables,
+      plan,
+      includeData,
+      rules,
+      excludeOutOfRange,
+    ) =>
       toArrayBuffer(
         await request<Uint8Array>({
           type: "exportVariables",
@@ -151,6 +188,17 @@ export function createPyodideEngine(
       });
       return toArrayBuffer(edited);
     },
+    exportAnalysis: async (data, sheet, codebook) =>
+      toArrayBuffer(
+        await request<Uint8Array>({
+          type: "exportAnalysis",
+          data: copy(data),
+          sheet,
+          codebook,
+        }),
+      ),
+    rScript: (fileName, codebook) =>
+      request({ type: "rScript", fileName, codebook }),
   };
 }
 

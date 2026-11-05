@@ -2,7 +2,7 @@ import re
 
 import pandas as pd
 
-from validator import is_blank, is_numeric, parse_date
+from validator import cell_text, is_blank, is_numeric, parse_date
 
 # 설정값에 따라 범주형 값 분포 확인 범위 변동
 MAX_CATEGORIES = 10
@@ -62,6 +62,10 @@ def inspect_columns(df):
             profile["type"] = "empty"
             profiles.append(profile)
             continue
+
+        raw_counts = values.map(cell_text).value_counts()
+        if len(raw_counts) <= MAX_CATEGORIES:
+            profile["raw_values"] = {key: int(count) for key, count in raw_counts.items()}
 
         if texts.nunique() > MAX_CATEGORIES:
             profile["examples"] = texts.drop_duplicates().head(5).tolist()
