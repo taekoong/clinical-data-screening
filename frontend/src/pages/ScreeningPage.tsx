@@ -10,9 +10,11 @@ import type { ScreeningEngine } from "../engine/engine";
 import { analysisFileName, downloadBlob, errorText, fileStem } from "../files";
 import { isNumericIssue, issueLabel, SEVERITY_LABELS } from "../issueTypes";
 import { formErrors, formToRules } from "../rulesForm";
+import { codeLabel } from "../variablesPlan";
 import {
   SEVERITIES,
   type CellEdit,
+  type Codebook,
   type Issue,
   type ScreeningResult,
   type Severity,
@@ -440,6 +442,8 @@ function Results({
         </div>
       )}
 
+      {run.file.codebook && <CodeLegend codebook={run.file.codebook} />}
+
       <div className="segmented" role="tablist">
         <button
           role="tab"
@@ -481,6 +485,7 @@ function Results({
           disabled={busy}
           onSelect={setSelected}
           onEdit={onEdit}
+          codebook={run.file.codebook}
           onBulkChange={currentFile && !currentFile.codebook ? (column, source) => setBulk({ column, source, bytes: currentFile.bytes, sheet: currentFile.info.sheet }) : undefined}
         />
         </>
@@ -534,6 +539,7 @@ function Results({
             disabled={busy}
             onEdit={onEdit}
             onShow={showInGrid}
+            codebook={run.file.codebook}
           />
           {filtered.length > shown && (
             <button
@@ -573,6 +579,46 @@ interface IssueTableProps {
   disabled: boolean;
   onEdit: (cell: string, value: string, original: string) => void;
   onShow: (issue: Issue) => void;
+  codebook?: Codebook;
+}
+
+// 코드, 라벨, 코드로 바꾸기 전 원래 값 (앞뒤 공백이 있는 값은 따옴표로 구분)
+function CodeLegend({ codebook }: { codebook: Codebook }) {
+  return (
+    <details className="code-legend">
+      <summary>코드표</summary>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>변수</th>
+              <th>코드</th>
+              <th>라벨</th>
+              <th>원래 값</th>
+            </tr>
+          </thead>
+          <tbody>
+            {Object.entries(codebook).flatMap(([column, levels]) =>
+              levels.map((level, i) => (
+                <tr key={`${column}:${level.code}`}>
+                  <td>{i === 0 ? column : ""}</td>
+                  <td className="mono">{level.code}</td>
+                  <td>{level.label}</td>
+                  <td className="mono value">
+                    {level.sources
+                      .map((source) =>
+                        source === source.trim() ? source : `"${source}"`,
+                      )
+                      .join(", ")}
+                  </td>
+                </tr>
+              )),
+            )}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  );
 }
 
 function IssueTable({
@@ -581,6 +627,7 @@ function IssueTable({
   disabled,
   onEdit,
   onShow,
+  codebook,
 }: IssueTableProps) {
   return (
     <div className="table-wrap">
@@ -624,6 +671,12 @@ function IssueTable({
                   value={issue.Original_Value}
                   numeric={isNumericIssue(issue.Issue_Type)}
                 />
+                {codeLabel(codebook, issue.Column, issue.Original_Value) && (
+                  <span className="cell-label">
+                    {" "}
+                    ({codeLabel(codebook, issue.Column, issue.Original_Value)})
+                  </span>
+                )}
               </td>
               <td>
                 {/* 1행은 머리글이라 고칠 수 없다 (빈 컬럼 문제) */}

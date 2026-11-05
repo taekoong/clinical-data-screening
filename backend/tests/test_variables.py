@@ -37,7 +37,6 @@ def workbook():
 VARIABLES = {"Age": "continuous", "Sex": "categorical"}
 PLAN = {
     "bins": [{"column": "Age", "new_column": "Age_grp", "cuts": [40, 65], "codes": [1, 2, 3], "right_closed": False}],
-    "codes": [{"column": "Sex", "new_column": "Sex_code", "mapping": {"M": 1, "F": 2}}],
 }
 
 
@@ -61,19 +60,15 @@ def test_export_adds_coded_columns_codebook_and_keeps_other_sheets():
     book = load_workbook(BytesIO(export_variables(workbook(), "Data", VARIABLES, PLAN)))
     ws = book["Data"]
     header = [cell.value for cell in ws[1]]
-    assert header == ["ID", "Age", "Sex", "Visit_Date", "Age_grp", "Sex_code"]
+    assert header == ["ID", "Age", "Sex", "Visit_Date", "Age_grp"]
 
     age_grp = [ws.cell(row=r, column=5).value for r in range(2, 9)]
-    sex_code = [ws.cell(row=r, column=6).value for r in range(2, 9)]
     # 40 이상 65 미만 = 2, 65 이상 = 3, 숫자가 아닌 값·결측은 빈칸
     assert age_grp == [1, 2, 2, 3, None, None, 3]
-    # 코드를 정하지 않은 " M"은 빈칸
-    assert sex_code == [1, 2, 1, None, 2, None, 1]
 
     assert book["Other"]["A1"].value == "unchanged"
     codebook = [[c.value for c in row] for row in book["Codebook"].iter_rows(min_row=2)]
-    assert ["Age_grp", "Age", "구간", 2, "40 이상 65 미만"] in codebook
-    assert ["Sex_code", "Sex", "범주 코드", 2, "F"] in codebook
+    assert ["Age_grp", 2, "40 이상 65 미만", "Age 구간"] in codebook
     assert {"Continuous_Summary", "Frequencies"} <= set(book.sheetnames)
 
 
@@ -122,7 +117,6 @@ def test_summary_only_export():
     ({"bins": [{**PLAN["bins"][0], "cuts": [65, 40]}]}, "작은 값부터"),
     ({"bins": [{**PLAN["bins"][0], "codes": [1, 2]}]}, "숫자 코드"),
     ({"bins": [{**PLAN["bins"][0], "new_column": "Sex"}]}, "이미 있습니다"),
-    ({"codes": [{**PLAN["codes"][0], "mapping": {"M": "남"}}]}, "숫자가 아닌 코드"),
 ])
 def test_invalid_plan_is_rejected(plan, message):
     with pytest.raises(ValueError, match=message):
@@ -215,3 +209,40 @@ def test_reapplying_codes_removes_edits_made_on_analysis_sheet_from_log():
     log = load_workbook(BytesIO(export_analysis(edited, "Data", CODEBOOK)))["Change_Log"]
 
     assert [row[1] for row in log.iter_rows(min_row=2, values_only=True)] == ["Data"]
+
+
+def test_summary_shows_labels_and_export_keeps_codebook():
+    coded = export_analysis(workbook(), "Data", CODEBOOK)
+
+    _, sex = describe_workbook(coded, "Analysis_Data", VARIABLES)
+    labels = {level["value"]: level["label"] for level in sex["levels"]}
+    assert labels == {"0": "여", "1": "남"}
+
+    # 원본 시트의 값은 코드가 아니므로 라벨을 붙이지 않는다
+    _, raw = describe_workbook(coded, "Data", VARIABLES)
+    assert all("label" not in level for level in raw["levels"])
+
+    plan = {"bins": PLAN["bins"]}
+    book = load_workbook(BytesIO(export_variables(coded, "Analysis_Data", VARIABLES, plan)))
+    rows = list(book["Codebook"].values)
+    assert rows[0] == ("Variable", "Code", "Label", "Source_Values")
+    assert ("Sex", 1, "남", "M,  M") in rows
+    assert ("Age_grp", 2, "40 이상 65 미만", "Age 구간") in rows
+    assert [cell.value for cell in book["Analysis_Data"][1]][-1] == "Age_grp"
+    assert [cell.value for cell in book["Data"][1]][-1] == "Visit_Date"
+
+    frequencies = list(book["Frequencies"].values)
+    assert frequencies[0][:3] == ("Variable", "Value", "Label")
+    assert ("Sex", "1", "남") in [row[:3] for row in frequencies]
+
+
+def test_unknown_code_has_no_label():
+    coded = export_analysis(workbook(), "Data", {"Sex": [{"code": 1, "label": "남", "sources": ["M"]}]})
+    _, sex = describe_workbook(coded, "Analysis_Data", VARIABLES)
+    assert {level["value"]: level["label"] for level in sex["levels"]}["F"] is None
+
+
+def test_r_script_can_read_other_sheet():
+    script = build_r_script("a.xlsx", {"Age_grp": [{"code": 1, "label": "40 미만", "sources": []}]}, "Data")
+    assert 'read_excel("a.xlsx", sheet = "Data")' in script
+    assert 'labels = c("40 미만")' in script

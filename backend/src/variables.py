@@ -12,6 +12,8 @@ CONTINUOUS_SHEET = "Continuous_Summary"
 FREQUENCY_SHEET = "Frequencies"
 OTHER_SHEET = "Other_Variables"
 CODEBOOK_SHEET = "Codebook"
+CODEBOOK_COLUMNS = ("Variable", "Code", "Label", "Source_Values")
+ANALYSIS_SHEET = "Analysis_Data"
 
 
 def read_sheet(file_bytes, sheet):
@@ -110,7 +112,7 @@ def level_sort_key(value):
     return (0, float(value), "") if is_numeric(value) else (1, 0.0, value)
 
 
-def describe_categorical(series):
+def describe_categorical(series, labels=None):
     texts = series[~series.map(is_blank)].map(cell_text)
     counts = texts.value_counts()
     total = int(counts.sum())
@@ -118,6 +120,9 @@ def describe_categorical(series):
         {"value": value, "count": int(counts[value]), "percent": round(counts[value] / total * 100, 1)}
         for value in sorted(counts.index, key=level_sort_key)
     ]
+    if labels:
+        for level in levels:
+            level["label"] = labels.get(level["value"])
     return {"levels": levels}
 
 
@@ -175,9 +180,10 @@ DESCRIBERS = {
 }
 
 
-def describe_variables(df, variables, rules=None, exclude_out_of_range=False):
+def describe_variables(df, variables, rules=None, exclude_out_of_range=False, labels=None):
     """variables: {컬럼: 유형} (선택한 순서대로). 유형은 VARIABLE_TYPES 중 하나
-    rules: 규칙 JSON. 숫자 범위·날짜 기간 밖의 값을 세고, exclude_out_of_range면 연속형 계산에서 뺀다"""
+    rules: 규칙 JSON. 숫자 범위·날짜 기간 밖의 값을 세고, exclude_out_of_range면 연속형 계산에서 뺀다
+    labels: {컬럼: {코드: 라벨}}. 범주형 빈도에 라벨을 붙인다"""
     results = []
     for column, kind in variables.items():
         if column not in df.columns:
@@ -198,17 +204,36 @@ def describe_variables(df, variables, rules=None, exclude_out_of_range=False):
             details = describe_continuous(series, low, high, exclude_out_of_range)
         elif kind == "date":
             details = describe_date(series, *rule_limits(rules, "date_columns", column))
+        elif kind == "categorical":
+            details = describe_categorical(series, (labels or {}).get(column))
         else:
             details = DESCRIBERS[kind](series)
         results.append({**base, **details})
     return results
 
 
+# 코드를 적용한 Analysis_Data를 요약할 때만 Codebook 시트의 라벨을 쓴다 (원본 시트의 값은 코드가 아니다)
+def read_labels(file_bytes, sheet):
+    if sheet != ANALYSIS_SHEET:
+        return {}
+    book = load_workbook(BytesIO(file_bytes), read_only=True)
+    if CODEBOOK_SHEET not in book.sheetnames:
+        return {}
+    rows = list(book[CODEBOOK_SHEET].iter_rows(values_only=True))
+    if not rows or tuple(rows[0][:len(CODEBOOK_COLUMNS)]) != CODEBOOK_COLUMNS:
+        return {}
+    labels = {}
+    for variable, code, label, *_ in rows[1:]:
+        labels.setdefault(str(variable), {})[cell_text(code)] = "" if label is None else str(label)
+    return labels
+
+
 def describe_workbook(file_bytes, sheet, variables, rules=None, exclude_out_of_range=False):
-    return describe_variables(read_sheet(file_bytes, sheet), variables, rules, exclude_out_of_range)
+    df = read_sheet(file_bytes, sheet)
+    return describe_variables(df, variables, rules, exclude_out_of_range, read_labels(file_bytes, sheet))
 
 
-# ---------- 코딩 (구간 나누기, 숫자 코드) ----------
+# ---------- 코딩 (구간 나누기) ----------
 
 def bin_labels(cuts, right_closed):
     def fmt(number):
@@ -235,12 +260,11 @@ def validate_plan(df, variables, plan):
         if column not in existing:
             errors.append(f"{column}: 데이터에 없는 컬럼입니다.")
 
-    def check_target(item, kind):
+    def check_target(item):
         column = item.get("column")
         new_column = str(item.get("new_column", "")).strip()
-        if variables.get(column) != kind:
-            label = "연속형" if kind == "continuous" else "범주형"
-            errors.append(f"{column}: {label}으로 선택한 변수가 아닙니다.")
+        if variables.get(column) != "continuous":
+            errors.append(f"{column}: 연속형으로 선택한 변수가 아닙니다.")
         if not new_column:
             errors.append(f"{column}: 새 컬럼 이름을 입력하세요.")
         elif new_column in existing:
@@ -250,7 +274,7 @@ def validate_plan(df, variables, plan):
         new_columns.append(new_column)
 
     for item in plan.get("bins", []):
-        check_target(item, "continuous")
+        check_target(item)
         cuts, codes = item.get("cuts", []), item.get("codes", [])
         column = item.get("column")
         if not cuts or not all(is_numeric(cut) for cut in cuts):
@@ -261,15 +285,6 @@ def validate_plan(df, variables, plan):
             errors.append(f"{column}: 구간마다 숫자 코드를 입력하세요.")
         elif len({float(code) for code in codes}) != len(codes):
             errors.append(f"{column}: 구간 코드가 중복됩니다.")
-
-    for item in plan.get("codes", []):
-        check_target(item, "categorical")
-        mapping = item.get("mapping", {})
-        if not mapping:
-            errors.append(f"{item.get('column')}: 코드를 하나 이상 입력하세요.")
-        bad = [value for value, code in mapping.items() if not is_numeric(code)]
-        if bad:
-            errors.append(f"{item.get('column')}: 숫자가 아닌 코드가 있습니다 ({', '.join(bad[:3])}).")
 
     return errors
 
@@ -287,18 +302,11 @@ def code_bins(series, item, low=None, high=None):
     groups = pd.cut(numbers, bins=[-math.inf, *cuts, math.inf], right=right_closed, labels=False)
     coded = groups.map(lambda g: None if pd.isna(g) else codes[int(g)])
     codebook = [
-        {"Code": code, "Meaning": label}
+        {"Code": code, "Label": label}
         for code, label in zip(codes, bin_labels(cuts, right_closed))
     ]
     return coded, codebook
 
-
-# 범주 값에 숫자 코드를 붙인다 (M → 1)
-def code_categories(series, item):
-    mapping = {value: plain_number(code) for value, code in item["mapping"].items()}
-    codebook = [{"Code": code, "Meaning": value} for value, code in mapping.items()]
-    coded = series.map(lambda v: None if is_blank(v) else mapping.get(cell_text(v)))
-    return coded, codebook
 
 def apply_codebook(series, levels):
     mapping = {
@@ -314,25 +322,23 @@ def apply_codebook(series, levels):
     return series.map(convert)
 
 def build_coding(df, plan, rules=None, exclude_out_of_range=False):
-    """새 컬럼 값과 코드북을 만든다. 코드가 없는 값은 빈칸으로 두고 개수를 알려 준다."""
+    """구간 컬럼 값과 코드북 줄을 만든다. 숫자가 아닌 값은 빈칸으로 두고 개수를 알려 준다."""
     columns, codebook, warnings = {}, [], []
-    for kind, items in (("bins", plan.get("bins", [])), ("codes", plan.get("codes", []))):
-        for item in items:
-            series = df[item["column"]]
-            if kind == "bins":
-                limits = rule_limits(rules, "numeric_columns", item["column"]) if exclude_out_of_range else (None, None)
-                coded, book = code_bins(series, item, *limits)
-            else:
-                coded, book = code_categories(series, item)
-            new_column = item["new_column"].strip()
-            columns[new_column] = coded
-            rule = "구간" if kind == "bins" else "범주 코드"
-            codebook += [{"New_Column": new_column, "Source_Column": item["column"], "Rule": rule, **row} for row in book]
+    for item in plan.get("bins", []):
+        series = df[item["column"]]
+        limits = rule_limits(rules, "numeric_columns", item["column"]) if exclude_out_of_range else (None, None)
+        coded, book = code_bins(series, item, *limits)
+        new_column = item["new_column"].strip()
+        columns[new_column] = coded
+        codebook += [
+            {"Variable": new_column, "Code": row["Code"], "Label": row["Label"],
+             "Source_Values": f"{item['column']} 구간"}
+            for row in book
+        ]
 
-            uncoded = int((coded.isna() & ~series.map(is_blank)).sum())
-            if uncoded:
-                reason = "숫자가 아닌 값" if kind == "bins" else "코드를 정하지 않은 값"
-                warnings.append(f"{new_column}: {reason} {uncoded}개는 빈칸으로 두었습니다.")
+        uncoded = int((coded.isna() & ~series.map(is_blank)).sum())
+        if uncoded:
+            warnings.append(f"{new_column}: 숫자가 아닌 값 {uncoded}개는 빈칸으로 두었습니다.")
     return columns, codebook, warnings
 
 
@@ -358,12 +364,14 @@ def summary_frames(stats):
         for s in stats if s["type"] == "continuous"
     ]
     frequencies = []
+    labeled = any("label" in level for s in stats if s["type"] == "categorical" for level in s["levels"])
     for s in stats:
         if s["type"] != "categorical":
             continue
         frequencies += [
             {
                 "Variable": s["column"], "Value": level["value"],
+                **({"Label": level.get("label")} if labeled else {}),
                 "Count": level["count"], "Percent": level["percent"],
             }
             for level in s["levels"]
@@ -398,8 +406,19 @@ def write_frame(book, name, frame):
         ws.append([None if isinstance(v, float) and math.isnan(v) else v for v in row])
 
 
+# 구간 코드를 더해도 변수 설정에서 정한 코드와 라벨이 사라지지 않도록 합친다
+def merge_codebook(book, rows):
+    kept = []
+    if CODEBOOK_SHEET in book.sheetnames:
+        values = list(book[CODEBOOK_SHEET].values)
+        if values and tuple(values[0][:len(CODEBOOK_COLUMNS)]) == CODEBOOK_COLUMNS:
+            replaced = {row["Variable"] for row in rows}
+            kept = [dict(zip(CODEBOOK_COLUMNS, row)) for row in values[1:] if row[0] not in replaced]
+    write_frame(book, CODEBOOK_SHEET, pd.DataFrame(kept + rows, columns=list(CODEBOOK_COLUMNS)))
+
+
 def export_variables(file_bytes, sheet, variables, plan, include_data=True, rules=None, exclude_out_of_range=False):
-    """include_data=True: 원본 파일에 새 컬럼과 요약·코드북 시트를 더한 파일
+    """include_data=True: 지금 파일에 구간 컬럼과 요약·코드북 시트를 더한 파일
     include_data=False: 요약 시트만 담은 파일"""
     df = read_sheet(file_bytes, sheet)
     plan = plan or {}
@@ -407,7 +426,8 @@ def export_variables(file_bytes, sheet, variables, plan, include_data=True, rule
     if errors:
         raise ValueError("\n".join(errors))
 
-    continuous, frequencies, other = summary_frames(describe_variables(df, variables, rules, exclude_out_of_range))
+    labels = read_labels(file_bytes, sheet)
+    continuous, frequencies, other = summary_frames(describe_variables(df, variables, rules, exclude_out_of_range, labels))
 
     if include_data:
         book = load_workbook(BytesIO(file_bytes))
@@ -420,7 +440,7 @@ def export_variables(file_bytes, sheet, variables, plan, include_data=True, rule
             for i, value in enumerate(values):
                 ws.cell(row=i + 2, column=col, value=value)
         if codebook:
-            write_frame(book, CODEBOOK_SHEET, pd.DataFrame(codebook))
+            merge_codebook(book, codebook)
     else:
         book = Workbook()
         book.remove(book.active)
@@ -437,9 +457,6 @@ def export_variables(file_bytes, sheet, variables, plan, include_data=True, rule
     buffer = BytesIO()
     book.save(buffer)
     return buffer.getvalue()
-
-ANALYSIS_SHEET = "Analysis_Data"
-
 
 def export_analysis(file_bytes, sheet, codebook):
     errors = validate_codebook(codebook)
@@ -489,12 +506,12 @@ def r_text(text):
     return f'"{escaped}"'
 
 
-def build_r_script(file_name, codebook):
+def build_r_script(file_name, codebook, sheet=ANALYSIS_SHEET):
     lines = [
         "# 엑셀 파일과 같은 폴더에서 실행하세요.",
         '# Windows: source("이_파일.R", encoding = "UTF-8")',
         "library(readxl)",
-        f'df <- read_excel({r_text(file_name)}, sheet = "{ANALYSIS_SHEET}")',
+        f'df <- read_excel({r_text(file_name)}, sheet = {r_text(sheet)})',
         "",
     ]
     for column, levels in codebook.items():

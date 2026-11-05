@@ -515,6 +515,11 @@ function CodeTable({
                   value={row.label}
                   onChange={(e) => onRow({ ...row, label: e.target.value })}
                 />
+                {row.label.trim().length > 20 && (
+                  <div className="muted small">
+                    R 그래프에서 잘려 보일 수 있습니다.
+                  </div>
+                )}
               </td>
             </tr>
           ))}

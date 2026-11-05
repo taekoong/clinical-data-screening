@@ -202,6 +202,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
             "api_r_script",
             request.fileName,
             JSON.stringify(request.codebook),
+            request.sheet ?? "",
           ),
         });
         return;

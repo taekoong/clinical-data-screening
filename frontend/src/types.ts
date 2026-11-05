@@ -141,7 +141,8 @@ export interface ContinuousStats extends VariableBase {
 
 export interface CategoricalStats extends VariableBase {
   type: "categorical";
-  levels: { value: string; count: number; percent: number }[];
+  // label: 코드를 적용한 변수의 라벨 (코드북에 없는 값은 null)
+  levels: { value: string; count: number; percent: number; label?: string | null }[];
 }
 
 export interface DateStats extends VariableBase {
@@ -187,16 +188,8 @@ export interface BinPlan {
   right_closed: boolean;
 }
 
-// 범주 값에 숫자 코드를 붙인다 (M → 1)
-export interface CodePlan {
-  column: string;
-  new_column: string;
-  mapping: Record<string, number>;
-}
-
 export interface CodingPlan {
   bins: BinPlan[];
-  codes: CodePlan[];
 }
 
 export interface CodeLevel {

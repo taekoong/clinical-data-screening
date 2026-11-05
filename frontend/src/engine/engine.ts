@@ -58,7 +58,8 @@ export interface ScreeningEngine {
     sheet: string,
     codebook: Codebook,
   ): Promise<ArrayBuffer>;
-  rScript(fileName: string, codebook: Codebook): Promise<string>;
+  // sheet: R이 읽을 시트 (없으면 Analysis_Data)
+  rScript(fileName: string, codebook: Codebook, sheet?: string): Promise<string>;
 }
 
 export type EngineStatus =
@@ -197,8 +198,8 @@ export function createPyodideEngine(
           codebook,
         }),
       ),
-    rScript: (fileName, codebook) =>
-      request({ type: "rScript", fileName, codebook }),
+    rScript: (fileName, codebook, sheet) =>
+      request({ type: "rScript", fileName, codebook, sheet }),
   };
 }
 

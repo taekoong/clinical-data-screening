@@ -10,10 +10,17 @@ import {
 import type { DataFile, RulesDraft } from "../App";
 import ValueText from "../components/ValueText";
 import type { ScreeningEngine } from "../engine/engine";
-import { downloadBlob, errorText, fileStem, readJsonFile } from "../files";
+import {
+  analysisFileName,
+  downloadBlob,
+  errorText,
+  fileStem,
+  readJsonFile,
+} from "../files";
 import { formToRules } from "../rulesForm";
 import type {
   CategoricalStats,
+  Codebook,
   ContinuousStats,
   DateStats,
   IdentifierStats,
@@ -26,15 +33,9 @@ import {
   binCounts,
   binLabels,
   buildPlan,
-  codeMode,
   emptyBin,
-  emptyCode,
-  hasAutoCodes,
   inferredType,
-  isNumber,
   isVariablesFile,
-  levelCode,
-  newColumnName,
   parseCuts,
   selectedByDefault,
   settingsFromFile,
@@ -42,9 +43,6 @@ import {
   TYPE_LABELS,
   type BinSetting,
   type BinSettings,
-  type CodeMode,
-  type CodeSetting,
-  type CodeSettings,
   type VariablesFile,
 } from "../variablesPlan";
 
@@ -130,7 +128,6 @@ function Variables({
   const [failed, setFailed] = useState("");
   const inflight = useRef("");
   const [bins, setBins] = useState<BinSettings>({});
-  const [codes, setCodes] = useState<CodeSettings>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -245,11 +242,28 @@ function Variables({
       buildPlan(
         stats,
         bins,
-        codes,
         profiles.map((p) => p.column),
       ),
-    [stats, bins, codes, profiles],
+    [stats, bins, profiles],
   );
+
+  // R 코드에 넣을 라벨: 변수 설정의 코드북 + 여기서 만든 구간
+  const rCodebook = useMemo(() => {
+    const merged: Codebook = { ...dataFile.codebook };
+    for (const bin of check.plan.bins) {
+      const labels = binLabels(bin.cuts, bin.right_closed);
+      merged[bin.new_column] = bin.codes.map((code, i) => ({
+        code,
+        label: labels[i],
+        sources: [],
+      }));
+    }
+    return merged;
+  }, [dataFile.codebook, check.plan.bins]);
+  const stem = fileStem(dataFile.name);
+  const dataFileName = dataFile.codebook
+    ? analysisFileName(dataFile.name)
+    : `${stem}_coded.xlsx`;
   const waiting = Object.keys(variables).length - stats.length;
 
   // 유형별 빠른 선택: 그 유형이 모두 선택되어 있으면 해제, 아니면 모두 선택
@@ -295,7 +309,7 @@ function Variables({
     setBusy(true);
     setError("");
     try {
-      const plan = includeData ? check.plan : { bins: [], codes: [] };
+      const plan = includeData ? check.plan : { bins: [] };
       const bytes = await engine.exportVariables(
         dataFile.bytes,
         dataFile.info.sheet,
@@ -305,13 +319,32 @@ function Variables({
         rules,
         excludeOutOfRange,
       );
-      const stem = fileStem(dataFile.name);
       downloadBlob(
         new Blob([bytes], { type: XLSX_TYPE }),
-        `${stem}_${includeData ? "coded" : "summary"}.xlsx`,
+        includeData ? dataFileName : `${stem}_summary.xlsx`,
       );
     } catch (e) {
       setError(`파일을 만들지 못했습니다: ${errorText(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function downloadRScript() {
+    setBusy(true);
+    setError("");
+    try {
+      const script = await engine.rScript(
+        dataFileName,
+        rCodebook,
+        dataFile.info.sheet,
+      );
+      downloadBlob(
+        new Blob([script], { type: "text/plain;charset=utf-8" }),
+        `${stem}_load_data.R`,
+      );
+    } catch (e) {
+      setError(`R 코드를 만들지 못했습니다: ${errorText(e)}`);
     } finally {
       setBusy(false);
     }
@@ -321,7 +354,6 @@ function Variables({
     const file: VariablesFile = {
       variables,
       bins: check.plan.bins,
-      codes: check.plan.codes,
     };
     const blob = new Blob([JSON.stringify(file, null, 2)], {
       type: "application/json",
@@ -347,9 +379,7 @@ function Variables({
         variableTypes: { ...dataFile.variableTypes, ...types },
       });
       setSelected(new Set(Object.keys(types)));
-      const loaded = settingsFromFile(value);
-      setBins(loaded.bins);
-      setCodes(loaded.codes);
+      setBins(settingsFromFile(value).bins);
       setNotice(
         `설정을 불러왔습니다.` +
           (missing.length
@@ -527,9 +557,8 @@ function Variables({
                   <StatsCard
                     s={activeStats}
                     bins={bins}
-                    codes={codes}
                     onBins={setBins}
-                    onCodes={setCodes}
+                    onGoToSetup={onGoToSetup}
                   />
                 ) : (
                   <p className="muted">
@@ -577,16 +606,28 @@ function Variables({
               onClick={() => download(true)}
               disabled={!canExport || check.errors.length > 0}
             >
-              코딩한 데이터 다운로드
+              데이터와 요약 다운로드
+            </button>
+            <button
+              className="button"
+              onClick={downloadRScript}
+              disabled={
+                !canExport ||
+                check.errors.length > 0 ||
+                Object.keys(rCodebook).length === 0
+              }
+            >
+              R 라벨 코드
             </button>
           </div>
         </div>
         <p className="muted">
           체크한 {selected.size}개 변수가 들어갑니다
-          {waiting > 0 && computing ? ` (${waiting}개 계산 중…)` : ""}. [코딩한
-          데이터 다운로드]는 원본 파일 오른쪽에 구간·코드 컬럼을 붙이고
-          Codebook·요약 시트를 더합니다. 원본 값은 바뀌지 않습니다. 결측과
-          숫자가 아닌 값은 계산에서 빠집니다.
+          {waiting > 0 && computing ? ` (${waiting}개 계산 중…)` : ""}. [데이터와
+          요약 다운로드]는 지금 데이터 파일의 {dataFile.info.sheet} 시트에 구간
+          컬럼을 붙이고 Codebook·요약 시트를 더합니다. R 라벨 코드에는 변수
+          설정의 코드와 구간 라벨이 들어가니, 데이터 파일과 같은 폴더에서
+          실행하세요. 결측과 숫자가 아닌 값은 계산에서 빠집니다.
         </p>
         {notice && <p className="message message-ok">{notice}</p>}
         {check.errors.length > 0 && (
@@ -618,15 +659,13 @@ const rowId = (column: string) => `variable-row-${encodeURIComponent(column)}`;
 function StatsCard({
   s,
   bins,
-  codes,
   onBins,
-  onCodes,
+  onGoToSetup,
 }: {
   s: VariableStats;
   bins: BinSettings;
-  codes: CodeSettings;
   onBins: (bins: BinSettings) => void;
-  onCodes: (codes: CodeSettings) => void;
+  onGoToSetup: () => void;
 }) {
   switch (s.type) {
     case "continuous":
@@ -638,13 +677,7 @@ function StatsCard({
         />
       );
     case "categorical":
-      return (
-        <CategoricalCard
-          stats={s}
-          setting={codes[s.column]}
-          onChange={(next) => onCodes({ ...codes, [s.column]: next })}
-        />
-      );
+      return <CategoricalCard stats={s} onGoToSetup={onGoToSetup} />;
     case "date":
       return <DateCard stats={s} />;
     case "identifier":
@@ -825,98 +858,35 @@ function skewHint(skew: number | null) {
     : "왼쪽 꼬리가 김 (작은 값 쪽으로 치우침)";
 }
 
-const MODE_LABELS: Record<CodeMode, string> = {
-  none: "변환 안 함",
-  code: "숫자 코드 (M → 1)",
-};
-const MODE_HELP: Record<CodeMode, string> = {
-  none: "요약만 하고 새 열은 만들지 않습니다.",
-  code: "값을 숫자 코드로 바꾼 새 열을 만듭니다. 원본 열은 그대로 남습니다.",
-};
-
 function CategoricalCard({
   stats: s,
-  setting,
-  onChange,
+  onGoToSetup,
 }: {
   stats: CategoricalStats;
-  setting: CodeSetting | undefined;
-  onChange: (s: CodeSetting) => void;
+  onGoToSetup: () => void;
 }) {
-  const current = setting ?? emptyCode();
-  const mode = codeMode(setting, s);
-  const enabled = mode !== "none";
   const valid = s.n - s.missing;
+  const labeled = s.levels.some((level) => "label" in level);
 
   return (
     <article className="variable-card">
       <CardHeader s={s}> · 값 {s.levels.length}종류</CardHeader>
 
-      <div className="picker">
-        <span className="muted">값 변환</span>
-        <div
-          className="segmented small"
-          role="radiogroup"
-          aria-label={`${s.column} 값 변환`}
-        >
-          {(Object.keys(MODE_LABELS) as CodeMode[]).map((m) => (
-            <button
-              key={m}
-              role="radio"
-              aria-checked={mode === m}
-              aria-selected={mode === m}
-              title={MODE_HELP[m]}
-              onClick={() => onChange({ ...current, mode: m })}
-            >
-              {MODE_LABELS[m]}
-            </button>
-          ))}
-        </div>
-        {enabled && (
-          <label className="inline">
-            새 열 이름
-            <input
-              className="narrow mono"
-              value={newColumnName(setting, s.column)}
-              onChange={(e) =>
-                onChange({ ...current, newColumn: e.target.value })
-              }
-            />
-          </label>
-        )}
-      </div>
-      <p className="muted small">{MODE_HELP[mode]}</p>
-
-      {enabled && hasAutoCodes(setting, s) && (
-        <div className="message message-warning small auto-code-notice">
-          <span>
-            직접 입력하지 않은 값에는 표 순서대로 번호가 자동으로 붙어 있습니다.
-            코드가 맞는지 확인하세요.
-          </span>
-          <button
-            className="button button-ghost"
-            onClick={() =>
-              onChange({
-                ...current,
-                codes: Object.fromEntries(
-                  s.levels.map((l) => [
-                    l.value,
-                    levelCode(setting, s, l.value),
-                  ]),
-                ),
-              })
-            }
-          >
-            이 번호로 확정
+      {!labeled && (
+        <p className="muted small">
+          숫자 코드와 라벨은{" "}
+          <button className="link-button" onClick={onGoToSetup}>
+            변수 설정
           </button>
-        </div>
+          에서 정합니다.
+        </p>
       )}
 
       <table className="compact">
         <thead>
           <tr>
-            {enabled && <th>코드</th>}
-            <th>값</th>
+            <th>{labeled ? "코드" : "값"}</th>
+            {labeled && <th>라벨</th>}
             <th>개수</th>
             <th>비율</th>
           </tr>
@@ -924,102 +894,29 @@ function CategoricalCard({
         <tbody>
           {s.levels.map((level) => (
             <tr key={level.value}>
-              {enabled && (
-                <td>
-                  <CodeInput
-                    value={levelCode(setting, s, level.value)}
-                    onChange={(code) =>
-                      onChange({
-                        ...current,
-                        codes: { ...current.codes, [level.value]: code },
-                      })
-                    }
-                  />
-                </td>
-              )}
               <td className="mono value">
                 <ValueText value={level.value} numeric={false} />
               </td>
+              {labeled && (
+                <td>
+                  {level.label ?? (
+                    <span className="text-error">코드북에 없음</span>
+                  )}
+                </td>
+              )}
               <td>{level.count}</td>
               <td>{pct(level.count, valid)}</td>
             </tr>
           ))}
           <tr className="muted">
-            {enabled && <td />}
             <td>(결측)</td>
+            {labeled && <td />}
             <td>{s.missing}</td>
             <td />
           </tr>
         </tbody>
       </table>
-      {enabled && (
-        <p className="muted small">
-          같은 뜻의 값(예: M, male)에는 같은 코드를 넣으면 됩니다. 코드를 비우면
-          그 값은 빈칸이 됩니다.
-        </p>
-      )}
-      {enabled && <ConversionPreview stats={s} setting={setting} />}
     </article>
-  );
-}
-
-// [코딩한 데이터 다운로드] 파일에서 원본 열과 새 열이 어떻게 나란히 보일지 미리 보여 준다
-function ConversionPreview({
-  stats: s,
-  setting,
-}: {
-  stats: CategoricalStats;
-  setting: CodeSetting | undefined;
-}) {
-  return (
-    <div className="conversion-preview">
-      <p className="muted small">미리보기</p>
-      <div className="conversion-preview-table">
-        <table className="compact">
-          <thead>
-            <tr>
-              <th className="mono">{s.column}</th>
-              <th aria-hidden="true" />
-              <th className="mono">
-                {newColumnName(setting, s.column).trim() || "(이름 없음)"}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {s.levels.map((level) => (
-              <tr key={level.value}>
-                <td className="mono value">
-                  <ValueText value={level.value} numeric={false} />
-                </td>
-                <td className="muted" aria-hidden="true">
-                  →
-                </td>
-                <td className="mono">
-                  <ConvertedValue
-                    text={levelCode(setting, s, level.value).trim()}
-                  />
-                </td>
-              </tr>
-            ))}
-            <tr className="muted">
-              <td>(결측)</td>
-              <td aria-hidden="true">→</td>
-              <td>빈칸</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function ConvertedValue({ text }: { text: string }) {
-  if (text === "") return <span className="muted">빈칸</span>;
-  // 파일에는 숫자로 들어가므로 01은 1로 보여 준다
-  return isNumber(text) ? (
-    String(Number(text))
-  ) : (
-    <span className="text-error">숫자가 아님</span>
   );
 }
 

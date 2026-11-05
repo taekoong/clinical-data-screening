@@ -9,7 +9,8 @@ import {
 import { isNumericIssue, issueLabel, SEVERITY_LABELS } from "../issueTypes";
 import ValueText from "./ValueText";
 import { cellAddress, columnLetter, parseCell, type CellPos } from "../cells";
-import type { Issue, Severity, SheetTable } from "../types";
+import type { Codebook, Issue, Severity, SheetTable } from "../types";
+import { codeLabel } from "../variablesPlan";
 
 const ROW_HEIGHT = 32;
 const HEADER_HEIGHT = 36;
@@ -36,6 +37,8 @@ interface Props {
   onSelect: (pos: CellPos) => void;
   onEdit: (cell: string, value: string, original: string) => void;
   onBulkChange?: (column: string, source: string) => void;
+  // 코드를 적용한 파일의 코드북. 있으면 셀 값 옆에 라벨을 보여 준다
+  codebook?: Codebook;
 }
 
 export default function DataGrid({
@@ -47,8 +50,10 @@ export default function DataGrid({
   onSelect,
   onEdit,
   onBulkChange,
+  codebook,
 }: Props) {
   const [onlyIssueRows, setOnlyIssueRows] = useState(false);
+  const [showLabels, setShowLabels] = useState(true);
   const [scrollTop, setScrollTop] = useState(0);
   const [draft, setDraft] = useState<Draft | null>(null);
   const draftRef = useRef<Draft | null>(null);
@@ -98,12 +103,21 @@ export default function DataGrid({
   const widths = useMemo(
     () =>
       table.columns.map((name, col) => {
+        // 라벨이 길어도 표가 넓어지지 않도록 폭을 제한하고 나머지는 …로 줄인다
+        const levels = showLabels ? codebook?.[name] : undefined;
+        if (levels) {
+          const widest = Math.max(
+            name.length,
+            ...levels.map((l) => `${l.code} (${l.label})`.length),
+          );
+          return Math.min(160, Math.max(72, widest * 12 + 24));
+        }
         let longest = name.length;
         for (const row of table.rows)
           longest = Math.max(longest, row[col].length);
         return Math.min(240, Math.max(72, longest * 8 + 24));
       }),
-    [table],
+    [table, codebook, showLabels],
   );
 
   const first = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
@@ -308,6 +322,16 @@ export default function DataGrid({
           />
           문제 있는 행만 보기
         </label>
+        {codebook && (
+          <label className="inline">
+            <input
+              type="checkbox"
+              checked={showLabels}
+              onChange={(e) => setShowLabels(e.target.checked)}
+            />
+            라벨 같이 보기
+          </label>
+        )}
       </div>
 
       <div className="grid-help" role="note">
@@ -386,6 +410,15 @@ export default function DataGrid({
         </p>
       )}
 
+      {selected && codebook?.[table.columns[selected.col]] && (
+        <p className="small">
+          <strong>{table.columns[selected.col]} 코드:</strong>{" "}
+          {codebook[table.columns[selected.col]]
+            .map((level) => `${level.code} = ${level.label}`)
+            .join(" · ")}
+        </p>
+      )}
+
       {selected && (
         <ul className="cell-issues">
           {selectedIssues.length === 0 && (
@@ -457,6 +490,10 @@ export default function DataGrid({
                   const cellIssues = issuesByCell.get(cell);
                   const shown = draft?.cell === cell ? draft.text : edits[cell];
                   const edited = shown !== undefined;
+                  const cellValue = edited ? shown : text;
+                  const label = showLabels
+                    ? codeLabel(codebook, table.columns[col], cellValue)
+                    : undefined;
                   const isSelected =
                     selected?.row === row && selected.col === col;
                   const classes = [
@@ -469,12 +506,17 @@ export default function DataGrid({
                       key={col}
                       data-cell={cell}
                       className={classes.join(" ")}
-                      title={cellIssues
-                        ?.map(
-                          (i) =>
-                            `${issueLabel(i.Issue_Type)}: ${i.Description}`,
-                        )
-                        .join("\n")}
+                      title={
+                        [
+                          label && `${cellValue} = ${label}`,
+                          ...(cellIssues ?? []).map(
+                            (i) =>
+                              `${issueLabel(i.Issue_Type)}: ${i.Description}`,
+                          ),
+                        ]
+                          .filter(Boolean)
+                          .join("\n") || undefined
+                      }
                       onClick={() => select({ row, col })}
                       onDoubleClick={() => focusInput()}
                     >
@@ -491,6 +533,7 @@ export default function DataGrid({
                       ) : (
                         text
                       )}
+                      {label && <span className="cell-label"> ({label})</span>}
                     </td>
                   );
                 })}

@@ -877,27 +877,6 @@ input[aria-invalid="true"] {
   border-color: var(--error);
 }
 
-.auto-code-notice {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.conversion-preview {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.conversion-preview-table {
-  max-height: 260px;
-  max-width: 100%;
-  overflow: auto;
-  align-self: flex-start;
-}
-
 /* 변수 보기: 왼쪽 목록, 오른쪽 선택한 변수의 요약 */
 .variables-layout {
   display: grid;
@@ -1013,4 +992,17 @@ table.variable-list tr.active td:first-child {
     border-top: 1px solid var(--border);
     padding-top: 16px;
   }
+}
+
+/* 코드 옆 라벨과 코드표 */
+.cell-label {
+  color: var(--muted);
+  font-family: var(--sans);
+  font-weight: 400;
+}
+
+.code-legend summary {
+  cursor: pointer;
+  font-weight: 600;
+  margin-bottom: 8px;
 }

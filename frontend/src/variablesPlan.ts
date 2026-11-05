@@ -1,7 +1,6 @@
 import type {
   BinPlan,
-  CategoricalStats,
-  CodePlan,
+  Codebook,
   CodingPlan,
   ColumnProfile,
   VariableStats,
@@ -17,25 +16,12 @@ export interface BinSetting {
   codes: Record<number, string>;
 }
 
-// 범주형 값 변환: none 변환 안 함, code 값 → 숫자 코드 (M → 1)
-export type CodeMode = "none" | "code";
-
-export interface CodeSetting {
-  mode?: CodeMode;
-  newColumn?: string;
-  codes: Record<string, string>;
-  // 설정 파일에서 불러온 경우: 파일에 없는 새 값은 기본 코드를 주지 않고 빈칸으로 둔다
-  unlistedBlank?: boolean;
-}
-
 export type BinSettings = Record<string, BinSetting>;
-export type CodeSettings = Record<string, CodeSetting>;
 
 // 저장하는 설정 파일 모양. Python export_variables에 그대로 넘기는 값과 같다
 export interface VariablesFile {
   variables: Record<string, VariableType>;
   bins: BinPlan[];
-  codes: CodePlan[];
 }
 
 export const TYPE_LABELS: Record<VariableType, string> = {
@@ -48,7 +34,7 @@ export const TYPE_LABELS: Record<VariableType, string> = {
 
 export const TYPE_HELP: Record<VariableType, string> = {
   continuous: "평균, 중앙값, 왜도 등 · 구간 나누기",
-  categorical: "값별 빈도와 비율 · 숫자 코드",
+  categorical: "값별 빈도와 비율 (코드와 라벨은 변수 설정에서)",
   date: "기간(처음~마지막)과 날짜가 아닌 값",
   identifier: "대상자 수와 여러 행에 나오는 ID",
   text: "고유값 수와 자주 나오는 값",
@@ -69,30 +55,6 @@ export function emptyBin(column: string): BinSetting {
     newColumn: `${column}_grp`,
     codes: {},
   };
-}
-
-export function emptyCode(): CodeSetting {
-  return { codes: {} };
-}
-
-const allNumeric = (stats: CategoricalStats) =>
-  stats.levels.every(
-    (l) => l.value.trim() !== "" && Number.isFinite(Number(l.value)),
-  );
-
-// 기본: 값이 이미 숫자(0/1, 1/2/3)면 변환 안 함, 글자면 숫자 코드
-export function codeMode(
-  setting: CodeSetting | undefined,
-  stats: CategoricalStats,
-): CodeMode {
-  return setting?.mode ?? (allNumeric(stats) ? "none" : "code");
-}
-
-export function newColumnName(
-  setting: CodeSetting | undefined,
-  column: string,
-) {
-  return setting?.newColumn ?? `${column}_code`;
 }
 
 export function parseCuts(text: string): number[] | null {
@@ -134,29 +96,6 @@ export function binCounts(
 export const binCode = (setting: BinSetting, i: number) =>
   setting.codes[i] ?? String(i + 1);
 
-// 값이 모두 숫자(이미 0/1 등으로 코딩된 변수)면 기본으로 코드를 만들지 않는다
-export function levelCode(
-  setting: CodeSetting | undefined,
-  stats: CategoricalStats,
-  value: string,
-) {
-  const stored = setting?.codes[value];
-  if (stored !== undefined) return stored;
-  if (setting?.unlistedBlank) return "";
-  return String(stats.levels.findIndex((l) => l.value === value) + 1);
-}
-
-// 직접 입력하지 않아 표 순서대로 번호가 붙은 값이 있는지
-export function hasAutoCodes(
-  setting: CodeSetting | undefined,
-  stats: CategoricalStats,
-) {
-  return (
-    !setting?.unlistedBlank &&
-    stats.levels.some((l) => setting?.codes[l.value] === undefined)
-  );
-}
-
 export interface PlanCheck {
   plan: CodingPlan;
   errors: string[];
@@ -169,10 +108,9 @@ export const isNumber = (text: string) =>
 export function buildPlan(
   stats: VariableStats[],
   bins: BinSettings,
-  codes: CodeSettings,
   existingColumns: string[],
 ): PlanCheck {
-  const plan: CodingPlan = { bins: [], codes: [] };
+  const plan: CodingPlan = { bins: [] };
   const errors: string[] = [];
   const warnings: string[] = [];
   const taken = new Set(existingColumns);
@@ -231,31 +169,6 @@ export function buildPlan(
         codes: codeNumbers,
         right_closed: setting.rightClosed,
       });
-    } else if (s.type === "categorical") {
-      const setting = codes[s.column];
-      const mode = codeMode(setting, s);
-      if (mode === "none") continue;
-      const name = checkName(s.column, newColumnName(setting, s.column));
-      const mapping: Record<string, number> = {};
-      let uncoded = 0;
-      for (const level of s.levels) {
-        const text = levelCode(setting, s, level.value);
-        if (text.trim() === "") uncoded += level.count;
-        else if (!isNumber(text))
-          errors.push(
-            `${s.column}: '${level.value}'의 코드 '${text}'는 숫자가 아닙니다.`,
-          );
-        else mapping[level.value] = Number(text);
-      }
-      if (!Object.keys(mapping).length) {
-        errors.push(`${s.column}: 코드를 하나 이상 입력하세요.`);
-        continue;
-      }
-      if (uncoded)
-        warnings.push(
-          `${name}: 코드를 비워 둔 값 ${uncoded}개는 빈칸이 됩니다.`,
-        );
-      plan.codes.push({ column: s.column, new_column: name, mapping });
     }
   }
 
@@ -265,7 +178,6 @@ export function buildPlan(
 // 저장한 설정 파일을 화면 입력값으로 되돌린다
 export function settingsFromFile(file: VariablesFile) {
   const bins: BinSettings = {};
-  const codes: CodeSettings = {};
   for (const b of file.bins ?? []) {
     bins[b.column] = {
       cuts: b.cuts.join(", "),
@@ -274,17 +186,7 @@ export function settingsFromFile(file: VariablesFile) {
       codes: Object.fromEntries(b.codes.map((c, i) => [i, String(c)])),
     };
   }
-  for (const c of file.codes ?? []) {
-    codes[c.column] = {
-      mode: "code",
-      newColumn: c.new_column,
-      codes: Object.fromEntries(
-        Object.entries(c.mapping).map(([v, code]) => [v, String(code)]),
-      ),
-      unlistedBlank: true,
-    };
-  }
-  return { bins, codes };
+  return { bins };
 }
 
 export function isVariablesFile(value: unknown): value is VariablesFile {
@@ -295,6 +197,16 @@ export function isVariablesFile(value: unknown): value is VariablesFile {
     typeof v.variables === "object" &&
     v.variables !== null
   );
+}
+
+// 코드 값의 라벨. 코드북에 없는 값이면 undefined
+export function codeLabel(
+  codebook: Codebook | undefined,
+  column: string,
+  value: string,
+) {
+  return codebook?.[column]?.find((level) => String(level.code) === value)
+    ?.label;
 }
 
 export interface CodeRow {
