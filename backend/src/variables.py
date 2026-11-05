@@ -4,6 +4,7 @@ from io import BytesIO
 import pandas as pd
 from openpyxl import Workbook, load_workbook
 
+from editor import LOG_SHEET
 from validator import cell_text, is_blank, is_numeric, parse_date
 
 VARIABLE_TYPES = ("continuous", "categorical", "date", "identifier", "text")
@@ -456,6 +457,13 @@ def export_analysis(file_bytes, sheet, codebook):
         del book[ANALYSIS_SHEET]
     ws = book.copy_worksheet(book[sheet])
     ws.title = ANALYSIS_SHEET
+
+    # 다시 만들면 Analysis_Data에서 고친 값이 사라지므로 그 수정 기록도 지운다
+    if LOG_SHEET in book.sheetnames:
+        log = book[LOG_SHEET]
+        for row in range(log.max_row, 1, -1):
+            if log.cell(row=row, column=2).value == ANALYSIS_SHEET:
+                log.delete_rows(row)
 
     rows = []
     for column, levels in codebook.items():

@@ -11,6 +11,11 @@ export function fileStem(name: string) {
   return name.replace(/\.[^.]+$/, '')
 }
 
+// 코드를 적용한 파일 이름. R 코드가 이 이름의 엑셀을 읽는다
+export function analysisFileName(name: string) {
+  return `${fileStem(name).replace(/_analysis$/, '')}_analysis.xlsx`
+}
+
 export function readJsonFile(file: File): Promise<unknown> {
   return file.text().then((text) => JSON.parse(text))
 }
