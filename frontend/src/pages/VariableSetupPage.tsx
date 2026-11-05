@@ -3,9 +3,9 @@ import type { DataFile, RulesDraft } from "../App";
 import DataFilePicker from "../components/DataFilePicker";
 import type { ScreeningEngine } from "../engine/engine";
 import { getRange, setRange, type RulesForm } from "../rulesForm";
-import type { ColumnProfile, VariableType, Codebook } from "../types";
+import type { CodeLevel, ColumnProfile, VariableType, Codebook } from "../types";
 import ValueText from "../components/ValueText";
-import { downloadBlob, errorText, fileStem } from "../files";
+import { analysisFileName, downloadBlob, errorText, fileStem } from "../files";
 import {
   checkRows,
   defaultRows,
@@ -18,6 +18,7 @@ import {
 } from "../variablesPlan";
 
 const TYPES = Object.keys(TYPE_LABELS) as VariableType[];
+const ANALYSIS_SHEET = "Analysis_Data";
 
 interface Props {
   engine: ScreeningEngine;
@@ -53,7 +54,7 @@ export default function VariableSetupPage({
       {/* 다른 파일이나 시트를 고르면 보고 있던 변수를 새로 고른다 */}
       {dataFile && (
         <Setup
-          key={`${dataFile.name}:${dataFile.info.sheet}`}
+          key={`${dataFile.name}:${dataFile.rawSheet ?? dataFile.info.sheet}`}
           engine={engine}
           dataFile={dataFile}
           onDataFile={onDataFile}
@@ -92,24 +93,36 @@ function Setup({
   const rowsOf = (p: ColumnProfile) =>
     defaultRows(p).map((row) => codeInputs[p.column]?.[row.source] ?? row);
 
-  const categorical = profiles.filter(
-    (p) => typeOf(p) === "categorical" && p.raw_values,
-  );
-  const codebook: Codebook = {};
+  // 코드를 적용한 뒤에는 그때 정한 코드북을 쓴다 (지금 시트는 이미 코드로 바뀐 Analysis_Data)
+  const applied = dataFile.codebook;
+  const categorical = applied
+    ? []
+    : profiles.filter((p) => typeOf(p) === "categorical" && p.raw_values);
+  const codebook: Codebook = { ...applied };
   for (const p of categorical) {
     const levels = rowsToLevels(rowsOf(p));
     if (levels.length) codebook[p.column] = levels;
   }
   const codeErrors = categorical.flatMap((p) => checkRows(p.column, rowsOf(p)));
-  const uncoded = categorical.flatMap((p) =>
-    rowsOf(p)
-      .filter((row) => !row.code.trim())
-      .map(
-        (row) => `${p.column}의 '${row.source}' ${p.raw_values![row.source]}건`,
-      ),
-  );
+  const uncoded = applied
+    ? profiles.flatMap((p) =>
+        Object.entries(applied[p.column] ? (p.raw_values ?? {}) : {})
+          .filter(
+            ([value]) =>
+              !applied[p.column].some((level) => String(level.code) === value),
+          )
+          .map(([value, count]) => `${p.column}의 '${value}' ${count}건`),
+      )
+    : categorical.flatMap((p) =>
+        rowsOf(p)
+          .filter((row) => !row.code.trim())
+          .map(
+            (row) =>
+              `${p.column}의 '${row.source}' ${p.raw_values![row.source]}건`,
+          ),
+      );
   const canExport = Object.keys(codebook).length > 0 && codeErrors.length === 0;
-  const excelName = `${fileStem(dataFile.name)}_analysis.xlsx`;
+  const excelName = analysisFileName(dataFile.name);
 
   function setType(column: string, type: VariableType) {
     onDataFile({
@@ -125,16 +138,75 @@ function Setup({
     });
   }
 
+  // Analysis_Data 시트를 만들고, 이후 규칙·스크리닝은 이 시트를 기준으로 한다
+  async function applyCodes() {
+    if (!canExport) {
+      onNext();
+      return;
+    }
+    setExporting(true);
+    setExportError("");
+    try {
+      const bytes = await engine.exportAnalysis(
+        dataFile.bytes,
+        dataFile.info.sheet,
+        codebook,
+      );
+      onDataFile({
+        ...dataFile,
+        bytes,
+        info: await engine.inspect(bytes, ANALYSIS_SHEET),
+        // 코드로 바뀌면 값만 보고 유형을 다시 추천하지 않도록 지금 유형을 고정한다
+        variableTypes: Object.fromEntries(
+          profiles.map((p) => [p.column, typeOf(p)]),
+        ),
+        codebook,
+        rawSheet: dataFile.info.sheet,
+      });
+      onNext();
+    } catch (e) {
+      setExportError(`코드를 적용하지 못했습니다: ${errorText(e)}`);
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function resetCodes() {
+    if (
+      dataFile.editedCells &&
+      !confirm("코드를 다시 적용하면 스크리닝에서 고친 값이 사라집니다. 계속할까요?")
+    )
+      return;
+    setExporting(true);
+    setExportError("");
+    try {
+      onDataFile({
+        ...dataFile,
+        info: await engine.inspect(dataFile.bytes, dataFile.rawSheet),
+        codebook: undefined,
+        rawSheet: undefined,
+        editedCells: undefined,
+      });
+    } catch (e) {
+      setExportError(`원본 시트를 열지 못했습니다: ${errorText(e)}`);
+    } finally {
+      setExporting(false);
+    }
+  }
+
   async function download(kind: "excel" | "r") {
     setExporting(true);
     setExportError("");
     try {
       if (kind === "excel") {
-        const bytes = await engine.exportAnalysis(
-          dataFile.bytes,
-          dataFile.info.sheet,
-          codebook,
-        );
+        // 적용한 뒤에는 스크리닝에서 고친 값까지 담긴 지금 파일을 내려받는다
+        const bytes = applied
+          ? dataFile.bytes
+          : await engine.exportAnalysis(
+              dataFile.bytes,
+              dataFile.info.sheet,
+              codebook,
+            );
         downloadBlob(
           new Blob([bytes], {
             type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -177,15 +249,30 @@ function Setup({
     <section className="card">
       <div className="section-header">
         <h2>2. 변수 유형과 값 설정</h2>
-        <button
-          className="button button-primary"
-          onClick={() => {
-            onDataFile({ ...dataFile, codebook });
-            onNext();
-          }}
-        >
-          다음: 규칙 편집 →
-        </button>
+        <div className="toolbar">
+          {applied ? (
+            <>
+              <button
+                className="button"
+                disabled={exporting}
+                onClick={resetCodes}
+              >
+                코드 다시 정하기
+              </button>
+              <button className="button button-primary" onClick={onNext}>
+                다음: 규칙 편집 →
+              </button>
+            </>
+          ) : (
+            <button
+              className="button button-primary"
+              disabled={exporting || codeErrors.length > 0}
+              onClick={applyCodes}
+            >
+              {canExport ? "코드 적용하고 다음 →" : "다음: 규칙 편집 →"}
+            </button>
+          )}
+        </div>
       </div>
       <p className="muted">
         유형은 값을 보고 추천해 둔 것이니 틀리면 바꾸세요. 여기서 정한 유형과
@@ -273,6 +360,7 @@ function Setup({
                   유형
                   <select
                     aria-label={`${active} 유형`}
+                    disabled={!!applied?.[active]}
                     value={typeOf(activeProfile)}
                     onChange={(e) =>
                       setType(active, e.target.value as VariableType)
@@ -291,8 +379,11 @@ function Setup({
                   onReset={(t) => setType(active, t)}
                 />
               </div>
-              {typeOf(activeProfile) === "categorical" &&
-              activeProfile.raw_values ? (
+              {applied?.[active] ? (
+                <AppliedCodes levels={applied[active]} />
+              ) : !applied &&
+                typeOf(activeProfile) === "categorical" &&
+                activeProfile.raw_values ? (
                 <CodeTable
                   profile={activeProfile}
                   rows={rowsOf(activeProfile)}
@@ -333,6 +424,8 @@ function Setup({
       <p className="muted small">
         엑셀의 Analysis_Data 시트에는 숫자 코드가 들어가고, 같은 폴더에서 R
         코드를 실행하면 R에서 라벨로 보입니다.
+        {applied &&
+          " 코드를 적용했으므로 규칙과 스크리닝은 Analysis_Data 시트를 검사합니다."}
       </p>
       {codeErrors.length > 0 && (
         <div className="message message-error">
@@ -351,6 +444,32 @@ function Setup({
       )}
       {exportError && <p className="message message-error">{exportError}</p>}
     </section>
+  );
+}
+
+// 코드를 적용한 변수: 바꾸려면 [코드 다시 정하기]를 누른다
+function AppliedCodes({ levels }: { levels: CodeLevel[] }) {
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>코드</th>
+            <th>라벨</th>
+            <th>원본 값</th>
+          </tr>
+        </thead>
+        <tbody>
+          {levels.map((level) => (
+            <tr key={level.code}>
+              <td>{level.code}</td>
+              <td>{level.label}</td>
+              <td className="mono value">{level.sources.join(", ")}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

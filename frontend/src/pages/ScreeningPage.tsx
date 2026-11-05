@@ -7,7 +7,7 @@ import ValueText from "../components/ValueText";
 import RulesFileButton from "../components/RulesFileButton";
 import RecodePanel from "../components/RecodePanel";
 import type { ScreeningEngine } from "../engine/engine";
-import { downloadBlob, errorText, fileStem } from "../files";
+import { analysisFileName, downloadBlob, errorText, fileStem } from "../files";
 import { isNumericIssue, issueLabel, SEVERITY_LABELS } from "../issueTypes";
 import { formErrors, formToRules } from "../rulesForm";
 import {
@@ -136,7 +136,7 @@ export default function ScreeningPage({
       const { sheet } = run.result;
       const bytes = await engine.applyEdits(run.file.bytes, sheet, list);
       const file: DataFile = {
-        name: run.file.name,
+        ...run.file,
         bytes,
         info: await engine.inspect(bytes, sheet),
         variableTypes:
@@ -167,7 +167,7 @@ export default function ScreeningPage({
     const stem = fileStem(file.name).replace(/_corrected$/, "");
     downloadBlob(
       new Blob([file.bytes], { type: XLSX_TYPE }),
-      `${stem}_corrected.xlsx`,
+      file.codebook ? analysisFileName(file.name) : `${stem}_corrected.xlsx`,
     );
     setUnsaved(false);
   }
@@ -235,7 +235,13 @@ export default function ScreeningPage({
         </div>
       )}
 
-      {run && (
+      {/* 코드를 적용하거나 파일을 바꾸면 예전 결과로 수정하지 않도록 숨긴다 */}
+      {run && dataFile && dataFile.bytes !== run.file.bytes && (
+        <p className="message message-warning">
+          데이터가 바뀌었습니다. [스크리닝 실행]을 다시 눌러 주세요.
+        </p>
+      )}
+      {run && (!dataFile || dataFile.bytes === run.file.bytes) && (
         <Results
           run={run}
           currentFile={dataFile?.bytes === run.file.bytes && dataFile.info.sheet === run.result.sheet ? dataFile : null}
@@ -475,7 +481,7 @@ function Results({
           disabled={busy}
           onSelect={setSelected}
           onEdit={onEdit}
-          onBulkChange={currentFile ? (column, source) => setBulk({ column, source, bytes: currentFile.bytes, sheet: currentFile.info.sheet }) : undefined}
+          onBulkChange={currentFile && !currentFile.codebook ? (column, source) => setBulk({ column, source, bytes: currentFile.bytes, sheet: currentFile.info.sheet }) : undefined}
         />
         </>
       ) : result.issues.length === 0 ? (

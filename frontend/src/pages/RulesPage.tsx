@@ -15,7 +15,7 @@ import {
   rulesToForm,
   type RulesForm,
 } from '../rulesForm'
-import type { ColumnProfile, Rules } from '../types'
+import type { CodeLevel, ColumnProfile, Rules } from '../types'
 import exampleRulesJson from '../../../data/study_rules.json?raw'
 
 interface Props {
@@ -128,7 +128,7 @@ export default function RulesPage({
         {dataFile && (
           <button
             className="button button-ghost"
-            onClick={() => replace(draft.name, draftFromWorkbook(dataFile.info))}
+            onClick={() => replace(draft.name, draftFromWorkbook(dataFile.info, dataFile.codebook))}
           >
             이 데이터로 규칙 초안 만들기
           </button>
@@ -184,7 +184,11 @@ export default function RulesPage({
 
       <Section
         title="범주형 허용값"
-        help="허용값 외의 값은 '허용되지 않는 값'으로, 대소문자나 Male/Yes처럼 표기만 다른 값은 '표기 차이'로 표시합니다."
+        help={
+          dataFile?.codebook
+            ? "코드를 적용한 변수는 허용값을 코드(1, 2)로 입력합니다. 허용값 외의 값은 '허용되지 않는 값'으로 표시합니다."
+            : "허용값 외의 값은 '허용되지 않는 값'으로, 대소문자나 Male/Yes처럼 표기만 다른 값은 '표기 차이'로 표시합니다."
+        }
         onAdd={() => update((f) => void f.categorical.push({ column: '', allowed: [] }))}
       >
         {form.categorical.map((row, i) => (
@@ -193,6 +197,7 @@ export default function RulesPage({
             <AllowedValues
               values={row.allowed}
               observed={profiles.get(row.column)?.values}
+              levels={dataFile?.codebook?.[row.column.trim()]}
               onChange={(values) => update((f) => void (f.categorical[i].allowed = values))}
             />
             <RemoveButton onClick={() => update((f) => void f.categorical.splice(i, 1))} />
@@ -405,14 +410,21 @@ function Observed({ profile }: { profile?: ColumnProfile }) {
 function AllowedValues({
   values,
   observed,
+  levels,
   onChange,
 }: {
   values: string[]
   observed?: Record<string, number>
+  // 코드를 적용한 변수의 코드와 라벨. 있으면 데이터의 값 대신 코드를 제안한다 (오류 값이 제안되지 않도록)
+  levels?: CodeLevel[]
   onChange: (values: string[]) => void
 }) {
   const [input, setInput] = useState('')
-  const suggestions = Object.entries(observed ?? {}).filter(([value]) => !values.includes(value))
+  const labelOf = (value: string) => levels?.find((level) => String(level.code) === value)?.label
+  const suggestions: [string, string | number][] = levels
+    ? levels.map((level) => [String(level.code), level.label])
+    : Object.entries(observed ?? {})
+  const remaining = suggestions.filter(([value]) => !values.includes(value))
 
   function add(text: string) {
     const items = text
@@ -429,6 +441,7 @@ function AllowedValues({
         {values.map((value) => (
           <span className="chip on" key={value}>
             {value}
+            {labelOf(value) && <span className="muted">{labelOf(value)}</span>}
             <button aria-label={`${value} 빼기`} onClick={() => onChange(values.filter((v) => v !== value))}>
               ×
             </button>
@@ -448,12 +461,12 @@ function AllowedValues({
           onBlur={() => input && add(input)}
         />
       </div>
-      {suggestions.length > 0 && (
+      {remaining.length > 0 && (
         <div className="chips suggestions">
-          <span className="muted small">데이터의 값:</span>
-          {suggestions.map(([value, count]) => (
+          <span className="muted small">{levels ? '코드:' : '데이터의 값:'}</span>
+          {remaining.map(([value, detail]) => (
             <button className="chip" key={value} onClick={() => onChange([...values, value])}>
-              + {value} <span className="muted">{count}</span>
+              + {value} <span className="muted">{detail}</span>
             </button>
           ))}
         </div>

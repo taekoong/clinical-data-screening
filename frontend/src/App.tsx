@@ -13,7 +13,9 @@ export interface DataFile {
   bytes: ArrayBuffer;
   info: WorkbookInfo;
   variableTypes?: Partial<Record<string, VariableType>>;
+  // 코드를 적용하면 Analysis_Data 시트를 검사하고, 코드북과 원본 시트 이름을 함께 보관한다
   codebook?: Codebook;
+  rawSheet?: string;
   editedCells?: number;
 }
 

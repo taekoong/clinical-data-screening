@@ -1,4 +1,4 @@
-import type { ColumnProfile, CrossCheck, Rules, WorkbookInfo } from './types'
+import type { Codebook, ColumnProfile, CrossCheck, Rules, WorkbookInfo } from './types'
 
 // 화면에서 편집하기 쉬운 형태. 숫자·날짜는 입력 중인 문자열 그대로 보관한다.
 export interface RulesForm {
@@ -157,13 +157,18 @@ function looksLikeId(profile: ColumnProfile, rows: number) {
 }
 
 // 데이터 분석 결과로 규칙 초안 생성. 범위·허용값은 연구자가 직접 정하도록 비워 둔다.
-export function draftFromWorkbook(info: WorkbookInfo): RulesForm {
+export function draftFromWorkbook(info: WorkbookInfo, codebook?: Codebook): RulesForm {
   const form = emptyForm()
   const idColumn = info.columns.find((c) => c.type === 'text' && looksLikeId(c, info.rows))
   const visitColumn = info.columns.find((c) => c.type === 'categorical' && /visit|방문/i.test(c.column))
 
   for (const profile of info.columns) {
     if (profile === idColumn) continue
+    // 코드로 바꾼 범주형은 숫자처럼 보여도 범위가 아니라 허용값으로 검사한다
+    if (codebook?.[profile.column]) {
+      form.categorical.push({ column: profile.column, allowed: [] })
+      continue
+    }
     if (profile.type === 'numeric') form.numeric.push({ column: profile.column, min: '', max: '' })
     if (profile.type === 'categorical' && profile !== visitColumn) {
       form.categorical.push({ column: profile.column, allowed: [] })

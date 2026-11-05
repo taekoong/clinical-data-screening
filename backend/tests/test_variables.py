@@ -7,6 +7,8 @@ import pytest
 from openpyxl import Workbook, load_workbook
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from editor import apply_edits  # noqa: E402
+from screening import run_screening  # noqa: E402
 from variables import (  # noqa: E402
     apply_codebook,
     build_r_script,
@@ -182,3 +184,34 @@ def test_r_script_sorts_levels_by_code_and_escapes_labels():
 ])
 def test_invalid_codebook_is_rejected(levels, message):
     assert any(message in error for error in validate_codebook({"Sex": levels}))
+
+
+def test_screening_checks_codes_on_analysis_sheet():
+    coded = export_analysis(workbook(), "Data", {"Sex": [
+        {"code": 1, "label": "남", "sources": ["M"]},
+        {"code": 2, "label": "여", "sources": ["F"]},
+    ]})
+    rules = {"categorical_columns": {"Sex": ["1", "2"]}}
+
+    issues = run_screening(coded, rules, "Analysis_Data")["issues"]
+    sex = issues[(issues["Column"] == "Sex") & (issues["Severity"] != "INFO")]
+
+    # 코드북에 없는 " M"만 잡고, 범주 규칙이 있으니 숫자 오타로 또 보고하지 않는다
+    assert set(sex["Cell"]) == {"C5"}
+    assert "INVALID_CATEGORY" in set(sex["Issue_Type"])
+    assert "SUSPECTED_TYPO" not in set(sex["Issue_Type"])
+
+    fixed = apply_edits(coded, "Analysis_Data", [{"cell": "C5", "value": "1"}])
+    issues = run_screening(fixed, rules, "Analysis_Data")["issues"]
+    assert "C5" not in set(issues["Cell"])
+    assert load_workbook(BytesIO(fixed))["Data"]["C5"].value == " M"
+
+
+def test_reapplying_codes_removes_edits_made_on_analysis_sheet_from_log():
+    raw_edit = apply_edits(workbook(), "Data", [{"cell": "C5", "value": "M"}])
+    coded = export_analysis(raw_edit, "Data", CODEBOOK)
+    edited = apply_edits(coded, "Analysis_Data", [{"cell": "C2", "value": "0"}])
+
+    log = load_workbook(BytesIO(export_analysis(edited, "Data", CODEBOOK)))["Change_Log"]
+
+    assert [row[1] for row in log.iter_rows(min_row=2, values_only=True)] == ["Data"]

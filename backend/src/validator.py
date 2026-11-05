@@ -68,7 +68,7 @@ def add_issue(
 
 
 # 1. 공통 스크리닝(결측값, 앞뒤 공백, 데이터형식 오류)
-def check_common(df, issues, sheet_name):
+def check_common(df, issues, sheet_name, skip_typo_columns=()):
     for col_idx, col in enumerate(df.columns):
         series = df.iloc[:, col_idx]
         values = series.dropna().astype(str).str.strip()
@@ -125,7 +125,8 @@ def check_common(df, issues, sheet_name):
                 )
 
             # 숫자형으로 추정되는 컬럼의 문자·기호 탐지
-            if numeric_ratio >= 0.8 and not is_numeric(value):
+            # 범주 규칙이 있는 컬럼은 허용값 검사에서 잡으므로 같은 셀을 두 번 보고하지 않는다
+            if col not in skip_typo_columns and numeric_ratio >= 0.8 and not is_numeric(value):
                 add_issue(
                     issues,
                     sheet=sheet_name,
@@ -467,7 +468,7 @@ def validate_data(df, rules=None, sheet_name="Raw_Data"):
     if id_rule.get("column"):
         skip_columns.add(id_rule["column"])
 
-    check_common(df, issues, sheet_name)
+    check_common(df, issues, sheet_name, set(categorical_rules))
     check_numeric_ranges(df, issues, sheet_name, rules.get("numeric_columns", {}))
     check_categories(df, issues, sheet_name, categorical_rules)
     check_label_variants(df, issues, sheet_name, skip_columns)
