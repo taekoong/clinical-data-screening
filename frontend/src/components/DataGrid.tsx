@@ -445,7 +445,13 @@ export default function DataGrid({
         onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
         onKeyDown={onGridKey}
       >
-        <table className="grid">
+        {/* 표 폭을 칸 폭의 합으로 고정해야 칸이 내용만큼 늘어나지 않고 …로 줄어든다 */}
+        <table
+          className="grid"
+          style={{
+            width: widths.reduce((sum, width) => sum + width, ROW_NUM_WIDTH),
+          }}
+        >
           <colgroup>
             <col style={{ width: ROW_NUM_WIDTH }} />
             {widths.map((width, col) => (
