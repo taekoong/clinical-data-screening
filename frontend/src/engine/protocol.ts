@@ -61,7 +61,8 @@ export type WorkerRequest =
       sheet: string;
       codebook: Codebook;
     }
-  | { type: "rScript"; id: number; fileName: string; codebook: Codebook; sheet?: string };
+  | { type: "rScript"; id: number; fileName: string; codebook: Codebook; sheet?: string }
+  | { type: "readCodebook"; id: number; data: Uint8Array };
 
 export type WorkerResponse =
   | { type: "progress"; message: string }

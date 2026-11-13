@@ -60,6 +60,10 @@ export interface ScreeningEngine {
   ): Promise<ArrayBuffer>;
   // sheet: R이 읽을 시트 (없으면 Analysis_Data)
   rScript(fileName: string, codebook: Codebook, sheet?: string): Promise<string>;
+  // 분석용 엑셀의 Codebook 시트와 원본 데이터 시트 이름 (코드북이 없으면 빈 객체)
+  readCodebook(
+    data: ArrayBuffer,
+  ): Promise<{ codebook: Codebook; raw_sheet: string | null }>;
 }
 
 export type EngineStatus =
@@ -200,6 +204,7 @@ export function createPyodideEngine(
       ),
     rScript: (fileName, codebook, sheet) =>
       request({ type: "rScript", fileName, codebook, sheet }),
+    readCodebook: (data) => request({ type: "readCodebook", data: copy(data) }),
   };
 }
 

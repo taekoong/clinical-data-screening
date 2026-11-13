@@ -14,6 +14,8 @@ OTHER_SHEET = "Other_Variables"
 CODEBOOK_SHEET = "Codebook"
 CODEBOOK_COLUMNS = ("Variable", "Code", "Label", "Source_Values")
 ANALYSIS_SHEET = "Analysis_Data"
+# 앱이 만드는 시트. 이 밖의 첫 시트를 원본 데이터 시트로 본다
+GENERATED_SHEETS = {ANALYSIS_SHEET, CODEBOOK_SHEET, LOG_SHEET, CONTINUOUS_SHEET, FREQUENCY_SHEET, OTHER_SHEET}
 
 
 def read_sheet(file_bytes, sheet):
@@ -226,6 +228,29 @@ def read_labels(file_bytes, sheet):
     for variable, code, label, *_ in rows[1:]:
         labels.setdefault(str(variable), {})[cell_text(code)] = "" if label is None else str(label)
     return labels
+
+
+# 분석용 엑셀을 다시 열 때 Codebook 시트에서 코드와 라벨을 되살린다 (원래 값은 ", "로 이어 저장되어 있다)
+def read_codebook(file_bytes):
+    book = load_workbook(BytesIO(file_bytes), read_only=True)
+    raw_sheet = next((name for name in book.sheetnames if name not in GENERATED_SHEETS), None)
+    if CODEBOOK_SHEET not in book.sheetnames or ANALYSIS_SHEET not in book.sheetnames:
+        return {"codebook": {}, "raw_sheet": raw_sheet}
+    rows = list(book[CODEBOOK_SHEET].iter_rows(values_only=True))
+    if not rows or tuple(rows[0][:len(CODEBOOK_COLUMNS)]) != CODEBOOK_COLUMNS:
+        return {"codebook": {}, "raw_sheet": raw_sheet}
+
+    codebook = {}
+    for row in rows[1:]:
+        variable, code, label, sources = (list(row) + [None] * 4)[:4]
+        if variable is None or not is_numeric(code):
+            continue
+        codebook.setdefault(str(variable), []).append({
+            "code": plain_number(code),
+            "label": "" if label is None else str(label),
+            "sources": [] if sources is None else str(sources).split(", "),
+        })
+    return {"codebook": codebook, "raw_sheet": raw_sheet}
 
 
 def describe_workbook(file_bytes, sheet, variables, rules=None, exclude_out_of_range=False):

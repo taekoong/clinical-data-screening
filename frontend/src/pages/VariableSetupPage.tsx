@@ -15,6 +15,7 @@ import {
   checkRows,
   defaultRows,
   inferredType,
+  inputsFromCodebook,
   rowsToLevels,
   TYPE_HELP,
   TYPE_LABELS,
@@ -86,7 +87,21 @@ function Setup({
 }) {
   const profiles = dataFile.info.columns;
   const [active, setActive] = useState(profiles[0]?.column ?? "");
-  const [codeInputs, setCodeInputs] = useState<CodeInputs>({});
+  const [codeInputs, setCodeInputs] = useState<CodeInputs>(() =>
+    inputsFromCodebook(dataFile.codebook),
+  );
+  // 코드북이 있는 변수: 코드북에 없던 값은 일부러 비워 둔 것이므로 기본 코드를 붙이지 않는다
+  const [restored, setRestored] = useState(
+    () => new Set(Object.keys(dataFile.codebook ?? {})),
+  );
+  // 코드를 적용하거나 파일에서 코드북을 불러오면 입력 표를 그 코드북으로 맞춘다
+  // ([변수 규칙 수정]으로 돌아왔을 때 적용한 코드가 그대로 보이도록)
+  const [seenCodebook, setSeenCodebook] = useState(dataFile.codebook);
+  if (dataFile.codebook && dataFile.codebook !== seenCodebook) {
+    setSeenCodebook(dataFile.codebook);
+    setCodeInputs(inputsFromCodebook(dataFile.codebook));
+    setRestored(new Set(Object.keys(dataFile.codebook)));
+  }
   const [exportError, setExportError] = useState("");
   const [exporting, setExporting] = useState(false);
   const activeProfile = profiles.find((p) => p.column === active);
@@ -96,7 +111,11 @@ function Setup({
 
   // 입력하지 않은 값은 기본값을 쓴다. 스크리닝에서 값이 바뀌어도 지금 데이터의 값 목록을 따른다
   const rowsOf = (p: ColumnProfile) =>
-    defaultRows(p).map((row) => codeInputs[p.column]?.[row.source] ?? row);
+    defaultRows(p).map(
+      (row) =>
+        codeInputs[p.column]?.[row.source] ??
+        (restored.has(p.column) ? { ...row, code: "" } : row),
+    );
 
   // 코드를 적용한 뒤에는 그때 정한 코드북을 쓴다 (지금 시트는 이미 코드로 바뀐 Analysis_Data)
   const applied = dataFile.codebook;

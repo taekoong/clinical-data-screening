@@ -15,6 +15,7 @@ from variables import (  # noqa: E402
     describe_workbook,
     export_analysis,
     export_variables,
+    read_codebook,
     validate_codebook,
 )
 
@@ -246,3 +247,24 @@ def test_r_script_can_read_other_sheet():
     script = build_r_script("a.xlsx", {"Age_grp": [{"code": 1, "label": "40 미만", "sources": []}]}, "Data")
     assert 'read_excel("a.xlsx", sheet = "Data")' in script
     assert 'labels = c("40 미만")' in script
+
+
+def test_codebook_is_read_back_from_analysis_file():
+    found = read_codebook(export_analysis(workbook(), "Data", CODEBOOK))
+
+    assert found["raw_sheet"] == "Data"
+    levels = found["codebook"]["Sex"]
+    assert {level["code"]: (level["label"], level["sources"]) for level in levels} == {
+        0: ("여", ["F"]),
+        1: ("남", ["M", " M"]),
+    }
+
+
+def test_codebook_includes_bins_and_ignores_plain_files():
+    coded = export_analysis(workbook(), "Data", CODEBOOK)
+    with_bins = export_variables(coded, "Analysis_Data", VARIABLES, {"bins": PLAN["bins"]})
+
+    found = read_codebook(with_bins)
+    assert found["raw_sheet"] == "Data"
+    assert [level["label"] for level in found["codebook"]["Age_grp"]] == ["40 미만", "40 이상 65 미만", "65 이상"]
+    assert read_codebook(workbook())["codebook"] == {}

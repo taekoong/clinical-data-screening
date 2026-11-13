@@ -194,6 +194,14 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         return;
       }
 
+      case "readCodebook":
+        post({
+          type: "result",
+          id: request.id,
+          value: JSON.parse(call("api_read_codebook", request.data)),
+        });
+        return;
+
       case "rScript":
         post({
           type: "result",

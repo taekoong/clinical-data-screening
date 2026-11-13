@@ -7,7 +7,7 @@ from editor import apply_edits, preview_recode
 from inspector import inspect_workbook
 from rules import validate_rules
 from screening import RulesError, run_screening
-from variables import ANALYSIS_SHEET, describe_workbook, export_variables, build_r_script, export_analysis
+from variables import ANALYSIS_SHEET, describe_workbook, export_variables, build_r_script, export_analysis, read_codebook
 
 _last_report = None
 
@@ -71,3 +71,7 @@ def api_export_analysis(data, sheet, codebook_json):
 
 def api_r_script(file_name, codebook_json, sheet):
     return build_r_script(file_name, json.loads(codebook_json), sheet or ANALYSIS_SHEET)
+
+
+def api_read_codebook(data):
+    return json.dumps(read_codebook(bytes(data.to_py())), ensure_ascii=False)

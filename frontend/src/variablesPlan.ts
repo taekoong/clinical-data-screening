@@ -218,6 +218,20 @@ export interface CodeRow {
 // 변수 → 원본 값 → 연구자가 입력한 줄
 export type CodeInputs = Record<string, Record<string, CodeRow>>;
 
+// 코드북을 [변수 설정] 입력 표의 값으로 되돌린다 (불러온 파일의 코드를 다시 정할 때)
+export function inputsFromCodebook(codebook?: Codebook): CodeInputs {
+  const inputs: CodeInputs = {};
+  for (const [column, levels] of Object.entries(codebook ?? {}))
+    for (const level of levels)
+      for (const source of level.sources)
+        (inputs[column] ??= {})[source] = {
+          source,
+          code: String(level.code),
+          label: level.label,
+        };
+  return inputs;
+}
+
 // 숫자형: 숫자는 값 그대로 코드로 쓰고 라벨은 비움, 숫자가 아닌 값은 코드 비움
 // 문자형: 가나다순 0, 1, 2… 번호와 원본 글자 라벨 (" M"과 "M"은 같은 코드)
 export function defaultRows(profile: ColumnProfile): CodeRow[] {

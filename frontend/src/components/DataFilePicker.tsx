@@ -3,6 +3,8 @@ import type { DataFile } from "../App";
 import type { ScreeningEngine } from "../engine/engine";
 import { errorText } from "../files";
 
+const ANALYSIS_SHEET = "Analysis_Data";
+
 interface Props {
   engine: ScreeningEngine;
   ready: boolean;
@@ -19,12 +21,32 @@ export default function DataFilePicker({
 }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
 
+  // 앱에서 받은 분석용 엑셀이면 Analysis_Data를 열고 Codebook 시트의 코드·라벨을 되살린다
+  // (원본 시트를 직접 고르면 코드북 없이 연다)
   async function load(name: string, bytes: ArrayBuffer, sheet?: string) {
     setBusy(true);
     setError("");
+    setNotice("");
     try {
-      onDataFile({ name, bytes, info: await engine.inspect(bytes, sheet) });
+      const found = await engine.readCodebook(bytes);
+      const columns = Object.keys(found.codebook);
+      if (columns.length && (sheet ?? ANALYSIS_SHEET) === ANALYSIS_SHEET) {
+        onDataFile({
+          name,
+          bytes,
+          info: await engine.inspect(bytes, ANALYSIS_SHEET),
+          codebook: found.codebook,
+          rawSheet: found.raw_sheet ?? undefined,
+          variableTypes: Object.fromEntries(
+            columns.map((column) => [column, "categorical" as const]),
+          ),
+        });
+        setNotice(`코드북을 불러왔습니다 (${columns.length}개 변수).`);
+      } else {
+        onDataFile({ name, bytes, info: await engine.inspect(bytes, sheet) });
+      }
     } catch (e) {
       setError(`엑셀 파일을 읽지 못했습니다. (${errorText(e)})`);
       onDataFile(null);
@@ -79,6 +101,7 @@ export default function DataFilePicker({
       )}
 
       {error && <p className="message message-error">{error}</p>}
+      {notice && <p className="message message-ok">{notice}</p>}
     </div>
   );
 }
