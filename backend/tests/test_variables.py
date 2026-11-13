@@ -188,7 +188,7 @@ def test_screening_checks_codes_on_analysis_sheet():
     rules = {"categorical_columns": {"Sex": ["1", "2"]}}
 
     issues = run_screening(coded, rules, "Analysis_Data")["issues"]
-    sex = issues[(issues["Column"] == "Sex") & (issues["Severity"] != "INFO")]
+    sex = issues[(issues["Column"] == "Sex") & (issues["Severity"] != "MISSING_VALUE")]
 
     # 코드북에 없는 " M"만 잡고, 범주 규칙이 있으니 숫자 오타로 또 보고하지 않는다
     assert set(sex["Cell"]) == {"C5"}

@@ -35,7 +35,7 @@
 | 연구 기간 밖                      | 확인 필요 | 연구 기간 이전·이후 방문일                   |
 | 컬럼 간 조건 위반                 | 확인 필요 | SBP가 DBP보다 작음                           |
 | 앞뒤 공백, 빈 컬럼                | 확인 필요 | `␣72.5`                                      |
-| 결측값                            | 정보      | 빈 셀                                        |
+| 결측값                            | 확인 필요 | 빈 셀                                        |
 
 등급: **오류**는 반드시 고쳐야 하는 값, **확인 필요**는 연구자가 판단할 값, **정보**는 참고용입니다.
 연구별 규칙의 예시는 [data/study_rules.json](data/study_rules.json)에 있습니다.
@@ -46,14 +46,16 @@
 
 1. 내 PC에 파일 불러오기
    - 터미널에 아래 내용을 입력합니다.
-     
+
 ```
 git clone https://github.com/taekoong/clinical-data-screening.git
 ```
 
 2. 웹 실행하기
+
 - 아래 명령어 입력 시 사이트 실행이 가능합니다.
-- http://localhost:5173 로 local 접속이 가능합니다. 
+- http://localhost:5173 로 local 접속이 가능합니다.
+
 ```bash
 python3 -m venv .venv && .venv/bin/pip install pandas openpyxl pytest
 cd frontend && npm install && npm run dev    # http://localhost:5173

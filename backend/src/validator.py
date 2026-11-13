@@ -104,7 +104,6 @@ def check_common(df, issues, sheet_name, skip_typo_columns=()):
                     cell=cell,
                     value=value,
                     code="MISSING_VALUE",
-                    severity="INFO",
                     detail="값이 비어 있습니다."
                 )
                 continue
