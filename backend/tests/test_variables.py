@@ -69,7 +69,7 @@ def test_export_adds_coded_columns_codebook_and_keeps_other_sheets():
 
     assert book["Other"]["A1"].value == "unchanged"
     codebook = [[c.value for c in row] for row in book["Codebook"].iter_rows(min_row=2)]
-    assert ["Age_grp", 2, "40 이상 65 미만", "Age 구간"] in codebook
+    assert ["Age_grp", 2, "40 이상 65 미만", "Age 구간", "Y"] in codebook
     assert {"Continuous_Summary", "Frequencies"} <= set(book.sheetnames)
 
 
@@ -147,7 +147,7 @@ def test_export_analysis_adds_coded_sheet_and_keeps_raw():
     assert book.sheetnames == ["Data", "Other", "Analysis_Data", "Codebook"]
     assert [row[0].value for row in book["Data"]["C2:C8"]] == ["M", "F", "M", " M", "F", None, "M"]
     assert [row[0].value for row in book["Analysis_Data"]["C2:C8"]] == [1, 0, 1, 1, 0, None, 1]
-    assert list(book["Codebook"].values)[1:] == [("Sex", 0, "여", "F"), ("Sex", 1, "남", "M,  M")]
+    assert list(book["Codebook"].values)[1:] == [("Sex", 0, "여", "F", None), ("Sex", 1, "남", "M,  M", None)]
 
 
 def test_export_analysis_can_run_again_on_its_output():
@@ -226,9 +226,9 @@ def test_summary_shows_labels_and_export_keeps_codebook():
     plan = {"bins": PLAN["bins"]}
     book = load_workbook(BytesIO(export_variables(coded, "Analysis_Data", VARIABLES, plan)))
     rows = list(book["Codebook"].values)
-    assert rows[0] == ("Variable", "Code", "Label", "Source_Values")
-    assert ("Sex", 1, "남", "M,  M") in rows
-    assert ("Age_grp", 2, "40 이상 65 미만", "Age 구간") in rows
+    assert rows[0] == ("Variable", "Code", "Label", "Source_Values", "Ordered")
+    assert ("Sex", 1, "남", "M,  M", None) in rows
+    assert ("Age_grp", 2, "40 이상 65 미만", "Age 구간", "Y") in rows
     assert [cell.value for cell in book["Analysis_Data"][1]][-1] == "Age_grp"
     assert [cell.value for cell in book["Data"][1]][-1] == "Visit_Date"
 
@@ -268,3 +268,46 @@ def test_codebook_includes_bins_and_ignores_plain_files():
     assert found["raw_sheet"] == "Data"
     assert [level["label"] for level in found["codebook"]["Age_grp"]] == ["40 미만", "40 이상 65 미만", "65 이상"]
     assert read_codebook(workbook())["codebook"] == {}
+
+
+def test_ordered_categories_are_saved_read_and_used_in_r():
+    codebook = {"Edu": [
+        {"code": 2, "label": "박사", "sources": ["박사"], "ordered": True},
+        {"code": 0, "label": "학사", "sources": ["학사"], "ordered": True},
+        {"code": 1, "label": "석사", "sources": ["석사"], "ordered": True},
+    ], **CODEBOOK}
+    book = Workbook()
+    sheet = book.active
+    sheet.title = "Data"
+    for row in [("ID", "Sex", "Edu"), ("001", "M", "학사"), ("002", "F", "박사")]:
+        sheet.append(row)
+    output = BytesIO()
+    book.save(output)
+
+    coded = export_analysis(output.getvalue(), "Data", codebook)
+    rows = list(load_workbook(BytesIO(coded))["Codebook"].values)
+    assert rows[0] == ("Variable", "Code", "Label", "Source_Values", "Ordered")
+    assert ("Edu", 0, "학사", "학사", "Y") in rows
+    assert ("Sex", 1, "남", "M,  M", None) in rows
+
+    found = read_codebook(coded)["codebook"]
+    assert all(level.get("ordered") for level in found["Edu"])
+    assert not any(level.get("ordered") for level in found["Sex"])
+
+    script = build_r_script("a.xlsx", found)
+    assert 'labels = c("학사", "석사", "박사"), ordered = TRUE)' in script
+    assert 'labels = c("여", "남"))' in script
+
+
+def test_bins_are_ordered_and_old_codebooks_still_load():
+    coded = export_analysis(workbook(), "Data", CODEBOOK)
+    with_bins = export_variables(coded, "Analysis_Data", VARIABLES, {"bins": PLAN["bins"]})
+    found = read_codebook(with_bins)["codebook"]
+    assert all(level.get("ordered") for level in found["Age_grp"])
+
+    # Ordered 열이 없던 예전 Codebook 시트
+    book = load_workbook(BytesIO(coded))
+    book["Codebook"].delete_cols(5)
+    old = BytesIO()
+    book.save(old)
+    assert {level["code"] for level in read_codebook(old.getvalue())["codebook"]["Sex"]} == {0, 1}

@@ -21,6 +21,7 @@ import {
   defaultRows,
   inferredType,
   inputsFromCodebook,
+  orderedColumns,
   rowsToLevels,
   TYPE_HELP,
   TYPE_LABELS,
@@ -99,6 +100,12 @@ function Setup({
     const saved = savedWorkspace().codeInputs;
     return saved?.fileKey === setupKey(dataFile) ? saved.inputs : {};
   });
+  // 순서형으로 체크한 변수 (코드가 작은 값부터 순서대로)
+  const [ordered, setOrdered] = useState<Set<string>>(() => {
+    if (dataFile.codebook) return orderedColumns(dataFile.codebook);
+    const saved = savedWorkspace().codeInputs;
+    return new Set(saved?.fileKey === setupKey(dataFile) ? saved.ordered : []);
+  });
   // 코드북이 있는 변수: 코드북에 없던 값은 일부러 비워 둔 것이므로 기본 코드를 붙이지 않는다
   const [restored, setRestored] = useState(
     () => new Set(Object.keys(dataFile.codebook ?? {})),
@@ -110,6 +117,7 @@ function Setup({
     setSeenCodebook(dataFile.codebook);
     setCodeInputs(inputsFromCodebook(dataFile.codebook));
     setRestored(new Set(Object.keys(dataFile.codebook)));
+    setOrdered(orderedColumns(dataFile.codebook));
   }
   const [exportError, setExportError] = useState("");
   const [exporting, setExporting] = useState(false);
@@ -134,7 +142,10 @@ function Setup({
   const codebook: Codebook = { ...applied };
   for (const p of categorical) {
     const levels = rowsToLevels(rowsOf(p));
-    if (levels.length) codebook[p.column] = levels;
+    if (levels.length)
+      codebook[p.column] = ordered.has(p.column)
+        ? levels.map((level) => ({ ...level, ordered: true }))
+        : levels;
   }
   const codeErrors = categorical.flatMap((p) => checkRows(p.column, rowsOf(p)));
   const uncoded = applied
@@ -169,7 +180,25 @@ function Setup({
       [column]: { ...codeInputs[column], [row.source]: row },
     };
     setCodeInputs(next);
-    saveWorkspace({ codeInputs: { fileKey: setupKey(dataFile), inputs: next } });
+    saveCodeInputs(next, ordered);
+  }
+
+  function toggleOrdered(column: string, on: boolean) {
+    const next = new Set(ordered);
+    if (on) next.add(column);
+    else next.delete(column);
+    setOrdered(next);
+    saveCodeInputs(codeInputs, next);
+  }
+
+  function saveCodeInputs(inputs: CodeInputs, orderedSet: Set<string>) {
+    saveWorkspace({
+      codeInputs: {
+        fileKey: setupKey(dataFile),
+        inputs,
+        ordered: [...orderedSet],
+      },
+    });
   }
 
   // Analysis_Data 시트를 만들고, 이후 규칙·스크리닝은 이 시트를 기준으로 한다
@@ -407,11 +436,28 @@ function Setup({
               ) : !applied &&
                 typeOf(activeProfile) === "categorical" &&
                 activeProfile.raw_values ? (
-                <CodeTable
-                  profile={activeProfile}
-                  rows={rowsOf(activeProfile)}
-                  onRow={(row) => updateRow(active, row)}
-                />
+                <>
+                  <label className="inline small">
+                    <input
+                      type="checkbox"
+                      checked={ordered.has(active)}
+                      onChange={(e) => toggleOrdered(active, e.target.checked)}
+                    />
+                    순서 있음 (학력, 병기처럼 순서가 있는 범주)
+                  </label>
+                  {ordered.has(active) && (
+                    <p className="message message-warning small">
+                      코드가 작은 값부터 순서대로입니다 (예: 학사 0 &lt; 석사 1
+                      &lt; 박사 2). 자동으로 채운 코드는 가나다순이니 순서에
+                      맞게 고치세요.
+                    </p>
+                  )}
+                  <CodeTable
+                    profile={activeProfile}
+                    rows={rowsOf(activeProfile)}
+                    onRow={(row) => updateRow(active, row)}
+                  />
+                </>
               ) : (
                 <ValueRange
                   profile={activeProfile}
@@ -454,6 +500,16 @@ function Setup({
 function AppliedCodes({ levels }: { levels: CodeLevel[] }) {
   return (
     <div className="table-wrap">
+      {levels.some((level) => level.ordered) && (
+        <p className="muted small">
+          순서형: 코드가 작은 값부터 순서대로 (
+          {[...levels]
+            .sort((a, b) => a.code - b.code)
+            .map((level) => level.label)
+            .join(" < ")}
+          )
+        </p>
+      )}
       <table>
         <thead>
           <tr>

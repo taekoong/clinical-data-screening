@@ -13,6 +13,8 @@ FREQUENCY_SHEET = "Frequencies"
 OTHER_SHEET = "Other_Variables"
 CODEBOOK_SHEET = "Codebook"
 CODEBOOK_COLUMNS = ("Variable", "Code", "Label", "Source_Values")
+# 순서형 변수는 Ordered 열에 Y. 이 열이 없는 예전 파일도 읽을 수 있도록 머리글 확인에는 앞의 4개만 쓴다
+CODEBOOK_WRITE_COLUMNS = (*CODEBOOK_COLUMNS, "Ordered")
 ANALYSIS_SHEET = "Analysis_Data"
 # 앱이 만드는 시트. 이 밖의 첫 시트를 원본 데이터 시트로 본다
 GENERATED_SHEETS = {ANALYSIS_SHEET, CODEBOOK_SHEET, LOG_SHEET, CONTINUOUS_SHEET, FREQUENCY_SHEET, OTHER_SHEET}
@@ -242,14 +244,17 @@ def read_codebook(file_bytes):
 
     codebook = {}
     for row in rows[1:]:
-        variable, code, label, sources = (list(row) + [None] * 4)[:4]
+        variable, code, label, sources, ordered = (list(row) + [None] * 5)[:5]
         if variable is None or not is_numeric(code):
             continue
-        codebook.setdefault(str(variable), []).append({
+        level = {
             "code": plain_number(code),
             "label": "" if label is None else str(label),
             "sources": [] if sources is None else str(sources).split(", "),
-        })
+        }
+        if ordered == "Y":
+            level["ordered"] = True
+        codebook.setdefault(str(variable), []).append(level)
     return {"codebook": codebook, "raw_sheet": raw_sheet}
 
 
@@ -356,8 +361,9 @@ def build_coding(df, plan, rules=None, exclude_out_of_range=False):
         new_column = item["new_column"].strip()
         columns[new_column] = coded
         codebook += [
+            # 구간은 원래 순서가 있으므로 순서형으로 기록한다
             {"Variable": new_column, "Code": row["Code"], "Label": row["Label"],
-             "Source_Values": f"{item['column']} 구간"}
+             "Source_Values": f"{item['column']} 구간", "Ordered": "Y"}
             for row in book
         ]
 
@@ -438,8 +444,8 @@ def merge_codebook(book, rows):
         values = list(book[CODEBOOK_SHEET].values)
         if values and tuple(values[0][:len(CODEBOOK_COLUMNS)]) == CODEBOOK_COLUMNS:
             replaced = {row["Variable"] for row in rows}
-            kept = [dict(zip(CODEBOOK_COLUMNS, row)) for row in values[1:] if row[0] not in replaced]
-    write_frame(book, CODEBOOK_SHEET, pd.DataFrame(kept + rows, columns=list(CODEBOOK_COLUMNS)))
+            kept = [dict(zip(CODEBOOK_WRITE_COLUMNS, row)) for row in values[1:] if row[0] not in replaced]
+    write_frame(book, CODEBOOK_SHEET, pd.DataFrame(kept + rows, columns=list(CODEBOOK_WRITE_COLUMNS)))
 
 
 def export_variables(file_bytes, sheet, variables, plan, include_data=True, rules=None, exclude_out_of_range=False):
@@ -512,14 +518,16 @@ def export_analysis(file_bytes, sheet, codebook):
         col = columns.index(column) + 1
         for i, value in enumerate(apply_codebook(df[column], levels)):
             ws.cell(row=i + 2, column=col, value=None if pd.isna(value) else value)
+        ordered = "Y" if any(level.get("ordered") for level in levels) else None
         for level in sorted(levels, key=lambda item: float(item["code"])):
             rows.append({
                 "Variable": column,
                 "Code": plain_number(level["code"]),
                 "Label": level["label"],
                 "Source_Values": ", ".join(level["sources"]),
+                "Ordered": ordered,
             })
-    write_frame(book, CODEBOOK_SHEET, pd.DataFrame(rows))
+    write_frame(book, CODEBOOK_SHEET, pd.DataFrame(rows, columns=list(CODEBOOK_WRITE_COLUMNS)))
 
     buffer = BytesIO()
     book.save(buffer)
@@ -544,5 +552,7 @@ def build_r_script(file_name, codebook, sheet=ANALYSIS_SHEET):
         codes = ", ".join(str(plain_number(level["code"])) for level in levels)
         labels = ", ".join(r_text(level["label"]) for level in levels)
         name = "df$`" + column.replace("`", "\\`") + "`"
-        lines.append(f"{name} <- factor({name}, levels = c({codes}), labels = c({labels}))")
+        # 순서형은 코드가 작은 값부터 순서대로 (예: 학사 < 석사 < 박사)
+        ordered = ", ordered = TRUE" if any(level.get("ordered") for level in levels) else ""
+        lines.append(f"{name} <- factor({name}, levels = c({codes}), labels = c({labels}){ordered})")
     return "\n".join(lines) + "\n"

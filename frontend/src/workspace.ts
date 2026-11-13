@@ -7,7 +7,7 @@ export interface Workspace {
   dataFile: DataFile | null;
   tab?: string;
   // 변수 설정에서 코드를 적용하기 전에 입력하던 코드·라벨
-  codeInputs?: { fileKey: string; inputs: CodeInputs };
+  codeInputs?: { fileKey: string; inputs: CodeInputs; ordered?: string[] };
   // 스크리닝에서 반영하기 전에 고치던 값
   screening?: {
     fileKey: string;

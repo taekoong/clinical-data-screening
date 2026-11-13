@@ -202,6 +202,8 @@ export interface CodeLevel {
   code: number;
   label: string;
   sources: string[];
+  // 순서형 변수: 코드가 작은 값부터 순서대로 (변수의 모든 코드에 같이 붙는다)
+  ordered?: boolean;
 }
 
 export type Codebook = Record<string, CodeLevel[]>;

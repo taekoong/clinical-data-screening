@@ -218,6 +218,15 @@ export interface CodeRow {
 // 변수 → 원본 값 → 연구자가 입력한 줄
 export type CodeInputs = Record<string, Record<string, CodeRow>>;
 
+// 코드북에서 순서형으로 표시된 변수
+export function orderedColumns(codebook?: Codebook): Set<string> {
+  return new Set(
+    Object.entries(codebook ?? {})
+      .filter(([, levels]) => levels.some((level) => level.ordered))
+      .map(([column]) => column),
+  );
+}
+
 // 코드북을 [변수 설정] 입력 표의 값으로 되돌린다 (불러온 파일의 코드를 다시 정할 때)
 export function inputsFromCodebook(codebook?: Codebook): CodeInputs {
   const inputs: CodeInputs = {};

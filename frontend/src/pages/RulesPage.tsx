@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import type { AutoSave, DataFile, RulesDraft } from '../App'
-import DataFilePicker from '../components/DataFilePicker'
-import RulesFileButton from '../components/RulesFileButton'
-import type { ScreeningEngine } from '../engine/engine'
-import { downloadBlob, errorText } from '../files'
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import type { AutoSave, DataFile, RulesDraft } from "../App";
+import DataFilePicker from "../components/DataFilePicker";
+import RulesFileButton from "../components/RulesFileButton";
+import type { ScreeningEngine } from "../engine/engine";
+import { downloadBlob, errorText } from "../files";
 import {
   draftFromWorkbook,
   emptyForm,
@@ -18,39 +18,51 @@ import {
   setDateRule,
   setRange,
   type RulesForm,
-} from '../rulesForm'
-import type { CodeLevel, ColumnProfile, Rules, VariableType } from '../types'
-import { inferredType, TYPE_LABELS } from '../variablesPlan'
-import exampleRulesJson from '../../../data/study_rules.json?raw'
+} from "../rulesForm";
+import type { CodeLevel, ColumnProfile, Rules, VariableType } from "../types";
+import { inferredType, TYPE_LABELS } from "../variablesPlan";
+import exampleRulesJson from "../../../data/study_rules.json?raw";
 
 interface Props {
-  engine: ScreeningEngine
-  ready: boolean
-  dataFile: DataFile | null
-  onDataFile: (file: DataFile | null) => void
-  draft: RulesDraft
-  onDraft: (draft: RulesDraft) => void
-  autoSave: AutoSave
-  onStartScreening: () => void
+  engine: ScreeningEngine;
+  ready: boolean;
+  dataFile: DataFile | null;
+  onDataFile: (file: DataFile | null) => void;
+  draft: RulesDraft;
+  onDraft: (draft: RulesDraft) => void;
+  autoSave: AutoSave;
+  onStartScreening: () => void;
 }
 
-const COLUMN_LIST_ID = 'rule-columns'
+const COLUMN_LIST_ID = "rule-columns";
 
 // 데이터를 불러오면 변수 유형별 탭으로 규칙을 정한다 (텍스트 변수는 규칙이 없어 탭을 두지 않는다)
-type RuleTab = 'continuous' | 'categorical' | 'date' | 'identifier' | 'common'
-const TYPE_TABS: { key: Exclude<RuleTab, 'common'>; help: string }[] = [
-  { key: 'continuous', help: "최소~최대를 벗어나면 '허용 범위 밖'으로 표시합니다. 비워 두면 범위를 검사하지 않습니다." },
-  { key: 'categorical', help: "허용값 외의 값은 '허용되지 않는 값'으로 표시합니다. 허용값이 없으면 검사하지 않습니다." },
-  { key: 'date', help: "[검사]를 켜면 날짜로 읽을 수 없는 값을 '오류'로, 기간 밖의 날짜를 '확인 필요'로 표시합니다." },
-  { key: 'identifier', help: 'ID가 형식(정규식)에 맞지 않으면 \'오류\'로 표시합니다. 예시 ID를 넣으면 형식을 자동으로 만들어 줍니다.' },
-]
+type RuleTab = "continuous" | "categorical" | "date" | "identifier" | "common";
+const TYPE_TABS: { key: Exclude<RuleTab, "common">; help: string }[] = [
+  {
+    key: "continuous",
+    help: "최소~최대를 벗어나면 '허용 범위 밖'으로 표시합니다. 비워 두면 범위를 검사하지 않습니다.",
+  },
+  {
+    key: "categorical",
+    help: "허용값 외의 값은 '허용되지 않는 값'으로 표시합니다. 허용값이 없으면 검사하지 않습니다.",
+  },
+  {
+    key: "date",
+    help: "[검사]를 켜면 날짜로 읽을 수 없는 값을 '오류'로, 기간 밖의 날짜를 '확인 필요'로 표시합니다.",
+  },
+  {
+    key: "identifier",
+    help: "ID가 형식(정규식)에 맞지 않으면 '오류'로 표시합니다. 예시 ID를 넣으면 형식을 자동으로 만들어 줍니다.",
+  },
+];
 
 // 규칙 종류와 그 규칙이 맞는 변수 유형 (유형을 바꾸면 남은 규칙을 알려 준다)
 const RULE_KINDS = [
-  { kind: 'numeric', label: '숫자 범위', type: 'continuous' },
-  { kind: 'categorical', label: '범주형 허용값', type: 'categorical' },
-  { kind: 'dates', label: '날짜 규칙', type: 'date' },
-] as const
+  { kind: "numeric", label: "숫자 범위", type: "continuous" },
+  { kind: "categorical", label: "범주형 허용값", type: "categorical" },
+  { kind: "dates", label: "날짜 규칙", type: "date" },
+] as const;
 
 export default function RulesPage({
   engine,
@@ -62,70 +74,93 @@ export default function RulesPage({
   autoSave,
   onStartScreening,
 }: Props) {
-  const { form } = draft
-  const rules = useMemo(() => formToRules(form), [form])
-  const [ruleErrors, setRuleErrors] = useState<string[]>([])
+  const { form } = draft;
+  const rules = useMemo(() => formToRules(form), [form]);
+  const [ruleErrors, setRuleErrors] = useState<string[]>([]);
 
   const profiles = useMemo(
     () => new Map((dataFile?.info.columns ?? []).map((c) => [c.column, c])),
     [dataFile],
-  )
-  const columns = [...profiles.keys()]
-  const [tab, setTab] = useState<RuleTab>('continuous')
-  const [query, setQuery] = useState('')
+  );
+  const columns = [...profiles.keys()];
+  const [tab, setTab] = useState<RuleTab>("continuous");
+  const [query, setQuery] = useState("");
 
-  const typeOf = (p: ColumnProfile): VariableType => dataFile?.variableTypes?.[p.column] ?? inferredType(p)
-  const ofType = (type: VariableType) => (dataFile?.info.columns ?? []).filter((p) => typeOf(p) === type)
-  const matches = (p: ColumnProfile) => p.column.toLowerCase().includes(query.trim().toLowerCase())
-  const hasRule = (kind: 'numeric' | 'categorical' | 'dates', column: string) =>
-    form[kind].some((r) => r.column.trim() === column)
+  const typeOf = (p: ColumnProfile): VariableType =>
+    dataFile?.variableTypes?.[p.column] ?? inferredType(p);
+  const ofType = (type: VariableType) =>
+    (dataFile?.info.columns ?? []).filter((p) => typeOf(p) === type);
+  const matches = (p: ColumnProfile) =>
+    p.column.toLowerCase().includes(query.trim().toLowerCase());
+  const hasRule = (kind: "numeric" | "categorical" | "dates", column: string) =>
+    form[kind].some((r) => r.column.trim() === column);
 
   // 입력이 멈추면 Python 규칙 검증을 돌린다 (스크리닝 때와 같은 검증)
   useEffect(() => {
-    if (!ready) return
-    let cancelled = false
+    if (!ready) return;
+    let cancelled = false;
     const timer = setTimeout(() => {
       engine
         .validateRules(rules)
         .then((errors) => !cancelled && setRuleErrors(errors))
-        .catch((e) => !cancelled && setRuleErrors([`규칙 검증 실패: ${errorText(e)}`]))
-    }, 300)
+        .catch(
+          (e) =>
+            !cancelled && setRuleErrors([`규칙 검증 실패: ${errorText(e)}`]),
+        );
+    }, 300);
     return () => {
-      cancelled = true
-      clearTimeout(timer)
-    }
-  }, [engine, ready, rules])
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [engine, ready, rules]);
 
-  const errors = [...formErrors(form), ...ruleErrors]
-  const missing = dataFile ? missingColumns(rules, columns) : []
+  const errors = [...formErrors(form), ...ruleErrors];
+  const missing = dataFile ? missingColumns(rules, columns) : [];
 
   // 데이터에 있는데 지금 유형과 맞지 않는 규칙 (예: 범주형으로 바꾼 Age에 남은 숫자 범위)
   const stray = dataFile
     ? RULE_KINDS.flatMap(({ kind, label, type }) =>
         form[kind]
-          .map((row, index) => ({ kind, label, index, column: row.column.trim(), expected: type }))
-          .filter((r) => profiles.has(r.column) && typeOf(profiles.get(r.column)!) !== r.expected),
+          .map((row, index) => ({
+            kind,
+            label,
+            index,
+            column: row.column.trim(),
+            expected: type,
+          }))
+          .filter(
+            (r) =>
+              profiles.has(r.column) &&
+              typeOf(profiles.get(r.column)!) !== r.expected,
+          ),
       )
-    : []
+    : [];
 
   function setForm(next: RulesForm) {
-    onDraft({ ...draft, form: next })
+    onDraft({ ...draft, form: next });
   }
 
   function update(change: (next: RulesForm) => void) {
-    const next = structuredClone(form)
-    change(next)
-    onDraft({ ...draft, form: next })
+    const next = structuredClone(form);
+    change(next);
+    onDraft({ ...draft, form: next });
   }
 
   function replace(name: string, next: RulesForm) {
-    if (Object.keys(rules).length && !confirm('지금 편집 중인 규칙을 바꿉니다. 계속할까요?')) return
-    onDraft({ name, form: next })
+    if (
+      Object.keys(rules).length &&
+      !confirm("지금 편집 중인 규칙을 바꿉니다. 계속할까요?")
+    )
+      return;
+    onDraft({ name, form: next });
   }
 
   function exportFile() {
-    const json = JSON.stringify(rules, null, 2) + '\n'
-    downloadBlob(new Blob([json], { type: 'application/json' }), `${draft.name.trim() || 'study_rules'}.json`)
+    const json = JSON.stringify(rules, null, 2) + "\n";
+    downloadBlob(
+      new Blob([json], { type: "application/json" }),
+      `${draft.name.trim() || "study_rules"}.json`,
+    );
   }
 
   return (
@@ -140,37 +175,70 @@ export default function RulesPage({
               onChange={(e) => onDraft({ ...draft, name: e.target.value })}
             />
           </label>
-          <button className="button button-ghost" onClick={() => replace('', emptyForm())}>
-            새로 만들기
-          </button>
-          <RulesFileButton onLoad={(loaded) => replace(loaded.name, loaded.form)} />
           <button
             className="button button-ghost"
-            onClick={() => replace('study_rules', rulesToForm(JSON.parse(exampleRulesJson) as Rules))}
+            onClick={() => replace("", emptyForm())}
+          >
+            새로 만들기
+          </button>
+          <RulesFileButton
+            onLoad={(loaded) => replace(loaded.name, loaded.form)}
+          />
+          <button
+            className="button button-ghost"
+            onClick={() =>
+              replace(
+                "study_rules",
+                rulesToForm(JSON.parse(exampleRulesJson) as Rules),
+              )
+            }
           >
             예시 규칙
           </button>
-          <button className="button" onClick={exportFile} disabled={errors.length > 0}>
+          <button
+            className="button"
+            onClick={exportFile}
+            disabled={errors.length > 0}
+          >
             ⬇ 규칙 파일로 내보내기
           </button>
         </div>
 
-        <SaveStatus autoSave={autoSave} hasErrors={errors.length > 0} onStartScreening={onStartScreening} />
+        <SaveStatus
+          autoSave={autoSave}
+          hasErrors={errors.length > 0}
+          onStartScreening={onStartScreening}
+        />
 
         <p className="muted small">
-          [규칙 파일로 내보내기]는 규칙을 JSON 파일로 내려받는 기능입니다. 누르지 않아도 이 브라우저에서는 편집한 규칙이 그대로
-          적용됩니다. 다른 PC나 다른 연구자와 함께 쓰려면 파일로 내보내 NAS 공유 폴더에 두고, [규칙 파일 불러오기]로 엽니다.
+          [규칙 파일로 내보내기]는 규칙을 JSON 파일로 내려받는 기능입니다.
+          누르지 않아도 이 브라우저에서는 편집한 규칙이 그대로 적용됩니다. 다른
+          PC나 다른 연구자와 함께 쓰려면 파일로 내보내 NAS 공유 폴더에 두고,
+          [규칙 파일 불러오기]로 엽니다.
         </p>
       </section>
 
       <section className="card">
         <h2>참고할 데이터</h2>
-        <p className="muted">데이터를 불러오면 컬럼 목록과 관측값을 보면서 규칙을 만들 수 있습니다. 데이터는 저장되지 않습니다.</p>
-        <DataFilePicker engine={engine} ready={ready} dataFile={dataFile} onDataFile={onDataFile} />
+        <p className="muted">
+          데이터를 불러오면 컬럼 목록과 관측값을 보면서 규칙을 만들 수 있습니다.
+          데이터는 저장되지 않습니다.
+        </p>
+        <DataFilePicker
+          engine={engine}
+          ready={ready}
+          dataFile={dataFile}
+          onDataFile={onDataFile}
+        />
         {dataFile && (
           <button
             className="button button-ghost"
-            onClick={() => replace(draft.name, draftFromWorkbook(dataFile.info, dataFile.codebook))}
+            onClick={() =>
+              replace(
+                draft.name,
+                draftFromWorkbook(dataFile.info, dataFile.codebook),
+              )
+            }
           >
             이 데이터로 규칙 초안 만들기
           </button>
@@ -183,13 +251,18 @@ export default function RulesPage({
       </section>
 
       {(errors.length > 0 || missing.length > 0) && (
-        <div className={`message ${errors.length ? 'message-error' : 'message-warning'}`}>
+        <div
+          className={`message ${errors.length ? "message-error" : "message-warning"}`}
+        >
           <ul>
             {errors.map((e) => (
               <li key={e}>{e}</li>
             ))}
             {missing.map((c) => (
-              <li key={c}>컬럼 '{c}'이 불러온 데이터에 없습니다. 이 데이터에서는 해당 검사를 건너뜁니다.</li>
+              <li key={c}>
+                컬럼 '{c}'이 불러온 데이터에 없습니다. 이 데이터에서는 해당
+                검사를 건너뜁니다.
+              </li>
             ))}
           </ul>
         </div>
@@ -197,12 +270,19 @@ export default function RulesPage({
 
       {stray.length > 0 && (
         <div className="message message-warning">
-          <strong>변수 유형과 맞지 않는 규칙이 있습니다.</strong> 변수 설정에서 유형을 확인하거나, 필요 없으면 지우세요.
+          <strong>변수 유형과 맞지 않는 규칙이 있습니다.</strong> 변수 설정에서
+          유형을 확인하거나, 필요 없으면 지우세요.
           <ul>
             {stray.map((r) => (
               <li key={`${r.kind}:${r.column}`}>
-                {r.column}: {r.label} (지금 유형: {TYPE_LABELS[typeOf(profiles.get(r.column)!)]}){' '}
-                <button className="link-button" onClick={() => update((f) => void f[r.kind].splice(r.index, 1))}>
+                {r.column}: {r.label} (지금 유형:{" "}
+                {TYPE_LABELS[typeOf(profiles.get(r.column)!)]}){" "}
+                <button
+                  className="link-button"
+                  onClick={() =>
+                    update((f) => void f[r.kind].splice(r.index, 1))
+                  }
+                >
                   규칙 지우기
                 </button>
               </li>
@@ -216,51 +296,80 @@ export default function RulesPage({
           <div className="section-header">
             <div className="segmented" role="tablist">
               {TYPE_TABS.map(({ key }) => {
-                const list = ofType(key)
+                const list = ofType(key);
                 const done =
-                  key === 'identifier'
-                    ? list.filter((p) => form.id.column.trim() === p.column).length
+                  key === "identifier"
+                    ? list.filter((p) => form.id.column.trim() === p.column)
+                        .length
                     : list.filter((p) =>
-                        hasRule(key === 'continuous' ? 'numeric' : key === 'date' ? 'dates' : 'categorical', p.column),
-                      ).length
+                        hasRule(
+                          key === "continuous"
+                            ? "numeric"
+                            : key === "date"
+                              ? "dates"
+                              : "categorical",
+                          p.column,
+                        ),
+                      ).length;
                 return (
-                  <button key={key} role="tab" aria-selected={tab === key} onClick={() => setTab(key)}>
-                    {TYPE_LABELS[key]} <span className="muted">{list.length ? `${done}/${list.length}` : 0}</span>
+                  <button
+                    key={key}
+                    role="tab"
+                    aria-selected={tab === key}
+                    onClick={() => setTab(key)}
+                  >
+                    {TYPE_LABELS[key]}{" "}
+                    <span className="muted">
+                      {list.length ? `${done}/${list.length}` : 0}
+                    </span>
                   </button>
-                )
+                );
               })}
-              <button role="tab" aria-selected={tab === 'common'} onClick={() => setTab('common')}>
+              <button
+                role="tab"
+                aria-selected={tab === "common"}
+                onClick={() => setTab("common")}
+              >
                 공통 규칙
               </button>
             </div>
-            {(tab === 'continuous' || tab === 'categorical' || tab === 'date') && (
-              <input type="search" placeholder="변수 이름 검색" value={query} onChange={(e) => setQuery(e.target.value)} />
+            {(tab === "continuous" ||
+              tab === "categorical" ||
+              tab === "date") && (
+              <input
+                type="search"
+                placeholder="변수 이름 검색"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
             )}
           </div>
 
-          {tab !== 'common' && (
+          {tab !== "common" && (
             <p className="muted">
-              {TYPE_TABS.find((t) => t.key === tab)!.help} 숫자는 변수 이름 옆 '규칙 수/변수 수'입니다. 유형은 변수 설정에서
-              바꿉니다.
+              {TYPE_TABS.find((t) => t.key === tab)!.help} 숫자는 변수 이름 옆
+              '규칙 수/변수 수'입니다. 유형은 변수 설정에서 바꿉니다.
             </p>
           )}
 
-          {tab !== 'common' && ofType(tab).length === 0 && (
+          {tab !== "common" && ofType(tab).length === 0 && (
             <p className="muted">{TYPE_LABELS[tab]} 변수가 없습니다.</p>
           )}
 
-          {tab === 'continuous' && (
+          {tab === "continuous" && (
             <div className="rule-rows">
-              {ofType('continuous')
+              {ofType("continuous")
                 .filter(matches)
                 .map((p) => {
-                  const range = getRange(form, 'numeric', p.column)
-                  const empty = !range.min.trim() && !range.max.trim()
+                  const range = getRange(form, "numeric", p.column);
+                  const empty = !range.min.trim() && !range.max.trim();
                   return (
                     <div className="rule-row" key={p.column}>
                       <span className="rule-name">
                         {p.column}
-                        {form.allowMissing.includes(p.column) && <span className="muted small"> · 결측 허용</span>}
+                        {form.allowMissing.includes(p.column) && (
+                          <span className="muted small"> · 결측 허용</span>
+                        )}
                       </span>
                       <input
                         className="narrow"
@@ -268,7 +377,17 @@ export default function RulesPage({
                         placeholder="최소"
                         aria-label={`${p.column} 최소`}
                         value={range.min}
-                        onChange={(e) => setForm(setRange(form, 'numeric', p.column, e.target.value, range.max))}
+                        onChange={(e) =>
+                          setForm(
+                            setRange(
+                              form,
+                              "numeric",
+                              p.column,
+                              e.target.value,
+                              range.max,
+                            ),
+                          )
+                        }
                       />
                       <span>~</span>
                       <input
@@ -277,60 +396,91 @@ export default function RulesPage({
                         placeholder="최대"
                         aria-label={`${p.column} 최대`}
                         value={range.max}
-                        onChange={(e) => setForm(setRange(form, 'numeric', p.column, range.min, e.target.value))}
+                        onChange={(e) =>
+                          setForm(
+                            setRange(
+                              form,
+                              "numeric",
+                              p.column,
+                              range.min,
+                              e.target.value,
+                            ),
+                          )
+                        }
                       />
                       <Observed profile={p} />
-                      {empty && <span className="muted small">⚠ 검사 안 함</span>}
+                      {empty && (
+                        <span className="muted small">⚠ 검사 안 함</span>
+                      )}
                     </div>
-                  )
+                  );
                 })}
             </div>
           )}
 
-          {tab === 'categorical' && (
+          {tab === "categorical" && (
             <div className="rule-rows">
-              {ofType('categorical')
+              {ofType("categorical")
                 .filter(matches)
                 .map((p) => {
-                  const allowed = form.categorical.find((r) => r.column.trim() === p.column)?.allowed ?? []
+                  const allowed =
+                    form.categorical.find((r) => r.column.trim() === p.column)
+                      ?.allowed ?? [];
                   return (
                     <div className="rule-row" key={p.column}>
                       <span className="rule-name">
                         {p.column}
-                        {!allowed.length && <span className="muted small"> ⚠ 검사 안 함</span>}
-                        {form.allowMissing.includes(p.column) && <span className="muted small"> · 결측 허용</span>}
+                        {!allowed.length && (
+                          <span className="muted small"> ⚠ 검사 안 함</span>
+                        )}
+                        {form.allowMissing.includes(p.column) && (
+                          <span className="muted small"> · 결측 허용</span>
+                        )}
                       </span>
                       <AllowedValues
                         values={allowed}
                         observed={p.values}
                         levels={dataFile.codebook?.[p.column]}
-                        onChange={(values) => setForm(setAllowed(form, p.column, values))}
+                        onChange={(values) =>
+                          setForm(setAllowed(form, p.column, values))
+                        }
                       />
                     </div>
-                  )
+                  );
                 })}
             </div>
           )}
 
-          {tab === 'date' && (
+          {tab === "date" && (
             <div className="rule-rows">
-              {ofType('date')
+              {ofType("date")
                 .filter(matches)
                 .map((p) => {
-                  const row = form.dates.find((r) => r.column.trim() === p.column)
-                  const limits = (min: string, max: string) => setForm(setDateRule(form, p.column, { min, max }))
+                  const row = form.dates.find(
+                    (r) => r.column.trim() === p.column,
+                  );
+                  const limits = (min: string, max: string) =>
+                    setForm(setDateRule(form, p.column, { min, max }));
                   return (
                     <div className="rule-row" key={p.column}>
                       <span className="rule-name">
                         {p.column}
-                        {form.allowMissing.includes(p.column) && <span className="muted small"> · 결측 허용</span>}
+                        {form.allowMissing.includes(p.column) && (
+                          <span className="muted small"> · 결측 허용</span>
+                        )}
                       </span>
                       <label className="inline">
                         <input
                           type="checkbox"
                           checked={!!row}
                           onChange={(e) =>
-                            setForm(setDateRule(form, p.column, e.target.checked ? { min: '', max: '' } : null))
+                            setForm(
+                              setDateRule(
+                                form,
+                                p.column,
+                                e.target.checked ? { min: "", max: "" } : null,
+                              ),
+                            )
                           }
                         />
                         검사
@@ -338,38 +488,41 @@ export default function RulesPage({
                       <input
                         type="date"
                         aria-label={`${p.column} 시작일`}
-                        value={row?.min ?? ''}
-                        onChange={(e) => limits(e.target.value, row?.max ?? '')}
+                        value={row?.min ?? ""}
+                        onChange={(e) => limits(e.target.value, row?.max ?? "")}
                       />
                       <span>~</span>
                       <input
                         type="date"
                         aria-label={`${p.column} 종료일`}
-                        value={row?.max ?? ''}
-                        onChange={(e) => limits(row?.min ?? '', e.target.value)}
+                        value={row?.max ?? ""}
+                        onChange={(e) => limits(row?.min ?? "", e.target.value)}
                       />
                       <Observed profile={p} />
-                      {!row && <span className="muted small">⚠ 검사 안 함</span>}
+                      {!row && (
+                        <span className="muted small">⚠ 검사 안 함</span>
+                      )}
                     </div>
-                  )
+                  );
                 })}
             </div>
           )}
 
-          {tab === 'identifier' && (
+          {tab === "identifier" && (
             <div className="rule-rows">
-              {ofType('identifier').length > 0 && (
+              {ofType("identifier").length > 0 && (
                 <div className="chips">
                   <span className="muted small">ID 변수:</span>
-                  {ofType('identifier').map((p) => (
+                  {ofType("identifier").map((p) => (
                     <button
                       key={p.column}
-                      className={`chip ${form.id.column.trim() === p.column ? 'on' : ''}`}
+                      className={`chip ${form.id.column.trim() === p.column ? "on" : ""}`}
                       onClick={() =>
                         update((f) => {
-                          f.id.column = p.column
+                          f.id.column = p.column;
                           // 형식이 비어 있으면 데이터의 첫 ID로 형식을 만들어 둔다 (예: SUBJ-001 → ^SUBJ-\d{3}$)
-                          if (!f.id.pattern.trim() && p.examples?.[0]) f.id.pattern = patternFromExample(p.examples[0])
+                          if (!f.id.pattern.trim() && p.examples?.[0])
+                            f.id.pattern = patternFromExample(p.examples[0]);
                         })
                       }
                     >
@@ -379,12 +532,17 @@ export default function RulesPage({
                 </div>
               )}
               <div className="rule-row">
-                <ColumnInput value={form.id.column} onChange={(v) => update((f) => void (f.id.column = v))} />
+                <ColumnInput
+                  value={form.id.column}
+                  onChange={(v) => update((f) => void (f.id.column = v))}
+                />
                 <input
                   className="mono grow"
                   placeholder="^SUBJ-\d{3}$"
                   value={form.id.pattern}
-                  onChange={(e) => update((f) => void (f.id.pattern = e.target.value))}
+                  onChange={(e) =>
+                    update((f) => void (f.id.pattern = e.target.value))
+                  }
                 />
               </div>
               <PatternTester
@@ -395,46 +553,73 @@ export default function RulesPage({
             </div>
           )}
 
-          {tab === 'common' && (
+          {tab === "common" && (
             <>
               <h3>중복 레코드</h3>
               <p className="muted">
-                고른 컬럼의 값 조합이 같은 행이 두 번 이상 있으면 '오류'로 표시합니다. 보통 대상자 ID + 방문입니다.
+                선택한 변수가 모두 같은 값인 행이 있으면 중복으로 표시합니다.
+                예를 들어 대상자 ID와 방문을 고르면, ID와 방문이 모두 같은 행을
+                확인하여 중복으로 처리합니다.
               </p>
               <div className="chips">
                 {form.duplicateKeys.map((key, i) => (
                   <span className="chip on" key={key}>
                     {key}
-                    <button aria-label={`${key} 빼기`} onClick={() => update((f) => void f.duplicateKeys.splice(i, 1))}>
+                    <button
+                      aria-label={`${key} 빼기`}
+                      onClick={() =>
+                        update((f) => void f.duplicateKeys.splice(i, 1))
+                      }
+                    >
                       ×
                     </button>
                   </span>
                 ))}
                 <AddColumn
                   exclude={form.duplicateKeys}
-                  onAdd={(column) => update((f) => void f.duplicateKeys.push(column))}
+                  onAdd={(column) =>
+                    update((f) => void f.duplicateKeys.push(column))
+                  }
                 />
               </div>
               <div className="section-header">
                 <h3>컬럼 간 조건</h3>
                 <button
                   className="button button-ghost"
-                  onClick={() => update((f) => void f.cross.push({ left: '', op: '>', right: '', detail: '' }))}
+                  onClick={() =>
+                    update(
+                      (f) =>
+                        void f.cross.push({
+                          left: "",
+                          op: ">",
+                          right: "",
+                          detail: "",
+                        }),
+                    )
+                  }
                 >
                   + 추가
                 </button>
               </div>
               <p className="muted">
-                한 행 안에서 두 값의 관계를 검사합니다. 오른쪽에는 컬럼 이름이나 숫자를 넣을 수 있습니다. 예: SBP &gt; DBP
+                한 행 안에서 두 값의 관계를 검사합니다. 오른쪽에는 컬럼 이름이나
+                숫자를 넣을 수 있습니다. 예: SBP &gt; DBP
               </p>
               <div className="rule-rows">
                 {form.cross.map((row, i) => (
                   <div className="rule-row" key={i}>
-                    <ColumnInput value={row.left} onChange={(v) => update((f) => void (f.cross[i].left = v))} />
+                    <ColumnInput
+                      value={row.left}
+                      onChange={(v) =>
+                        update((f) => void (f.cross[i].left = v))
+                      }
+                    />
                     <select
                       className="narrow"
                       value={row.op}
-                      onChange={(e) => update((f) => void (f.cross[i].op = e.target.value))}
+                      onChange={(e) =>
+                        update((f) => void (f.cross[i].op = e.target.value))
+                      }
                     >
                       {OPERATORS.map((op) => (
                         <option key={op}>{op}</option>
@@ -443,15 +628,21 @@ export default function RulesPage({
                     <ColumnInput
                       value={row.right}
                       placeholder="컬럼 또는 숫자"
-                      onChange={(v) => update((f) => void (f.cross[i].right = v))}
+                      onChange={(v) =>
+                        update((f) => void (f.cross[i].right = v))
+                      }
                     />
                     <input
                       className="grow"
                       placeholder="결과에 보일 설명 (선택)"
                       value={row.detail}
-                      onChange={(e) => update((f) => void (f.cross[i].detail = e.target.value))}
+                      onChange={(e) =>
+                        update((f) => void (f.cross[i].detail = e.target.value))
+                      }
                     />
-                    <RemoveButton onClick={() => update((f) => void f.cross.splice(i, 1))} />
+                    <RemoveButton
+                      onClick={() => update((f) => void f.cross.splice(i, 1))}
+                    />
                   </div>
                 ))}
               </div>
@@ -463,17 +654,28 @@ export default function RulesPage({
           <Section
             title="숫자 범위"
             help="값이 최소~최대를 벗어나면 '허용 범위 밖'으로, 숫자가 아니면 '숫자 변환 불가'로 표시합니다. 임상적으로 가능한 범위를 입력하세요."
-            onAdd={() => update((f) => void f.numeric.push({ column: '', min: '', max: '' }))}
+            onAdd={() =>
+              update(
+                (f) => void f.numeric.push({ column: "", min: "", max: "" }),
+              )
+            }
           >
             {form.numeric.map((row, i) => (
               <div className="rule-row" key={i}>
-                <ColumnInput value={row.column} onChange={(v) => update((f) => void (f.numeric[i].column = v))} />
+                <ColumnInput
+                  value={row.column}
+                  onChange={(v) =>
+                    update((f) => void (f.numeric[i].column = v))
+                  }
+                />
                 <input
                   className="narrow"
                   inputMode="decimal"
                   placeholder="최소"
                   value={row.min}
-                  onChange={(e) => update((f) => void (f.numeric[i].min = e.target.value))}
+                  onChange={(e) =>
+                    update((f) => void (f.numeric[i].min = e.target.value))
+                  }
                 />
                 <span>~</span>
                 <input
@@ -481,10 +683,14 @@ export default function RulesPage({
                   inputMode="decimal"
                   placeholder="최대"
                   value={row.max}
-                  onChange={(e) => update((f) => void (f.numeric[i].max = e.target.value))}
+                  onChange={(e) =>
+                    update((f) => void (f.numeric[i].max = e.target.value))
+                  }
                 />
                 <Observed profile={profiles.get(row.column)} />
-                <RemoveButton onClick={() => update((f) => void f.numeric.splice(i, 1))} />
+                <RemoveButton
+                  onClick={() => update((f) => void f.numeric.splice(i, 1))}
+                />
               </div>
             ))}
           </Section>
@@ -492,29 +698,50 @@ export default function RulesPage({
           <Section
             title="범주형 허용값"
             help="허용값 외의 값은 '허용되지 않는 값'으로, 대소문자나 Male/Yes처럼 표기만 다른 값은 '표기 차이'로 표시합니다."
-            onAdd={() => update((f) => void f.categorical.push({ column: '', allowed: [] }))}
+            onAdd={() =>
+              update(
+                (f) => void f.categorical.push({ column: "", allowed: [] }),
+              )
+            }
           >
             {form.categorical.map((row, i) => (
               <div className="rule-row" key={i}>
-                <ColumnInput value={row.column} onChange={(v) => update((f) => void (f.categorical[i].column = v))} />
+                <ColumnInput
+                  value={row.column}
+                  onChange={(v) =>
+                    update((f) => void (f.categorical[i].column = v))
+                  }
+                />
                 <AllowedValues
                   values={row.allowed}
                   observed={profiles.get(row.column)?.values}
-                  onChange={(values) => update((f) => void (f.categorical[i].allowed = values))}
+                  onChange={(values) =>
+                    update((f) => void (f.categorical[i].allowed = values))
+                  }
                 />
-                <RemoveButton onClick={() => update((f) => void f.categorical.splice(i, 1))} />
+                <RemoveButton
+                  onClick={() => update((f) => void f.categorical.splice(i, 1))}
+                />
               </div>
             ))}
           </Section>
 
-          <Section title="대상자 ID 형식" help="ID가 형식(정규식)에 맞지 않으면 '오류'로 표시합니다. 예시 ID를 넣으면 형식을 자동으로 만들어 줍니다.">
+          <Section
+            title="대상자 ID 형식"
+            help="ID가 형식(정규식)에 맞지 않으면 '오류'로 표시합니다. 예시 ID를 넣으면 형식을 자동으로 만들어 줍니다."
+          >
             <div className="rule-row">
-              <ColumnInput value={form.id.column} onChange={(v) => update((f) => void (f.id.column = v))} />
+              <ColumnInput
+                value={form.id.column}
+                onChange={(v) => update((f) => void (f.id.column = v))}
+              />
               <input
                 className="mono grow"
                 placeholder="^SUBJ-\d{3}$"
                 value={form.id.pattern}
-                onChange={(e) => update((f) => void (f.id.pattern = e.target.value))}
+                onChange={(e) =>
+                  update((f) => void (f.id.pattern = e.target.value))
+                }
               />
             </div>
             <PatternTester
@@ -524,19 +751,29 @@ export default function RulesPage({
             />
           </Section>
 
-          <Section title="중복 레코드" help="고른 컬럼의 값 조합이 같은 행이 두 번 이상 있으면 '오류'로 표시합니다. 보통 대상자 ID + 방문입니다.">
+          <Section
+            title="중복 레코드"
+            help="고른 컬럼의 값 조합이 같은 행이 두 번 이상 있으면 '오류'로 표시합니다. 보통 대상자 ID + 방문입니다."
+          >
             <div className="chips">
               {form.duplicateKeys.map((key, i) => (
                 <span className="chip on" key={key}>
                   {key}
-                  <button aria-label={`${key} 빼기`} onClick={() => update((f) => void f.duplicateKeys.splice(i, 1))}>
+                  <button
+                    aria-label={`${key} 빼기`}
+                    onClick={() =>
+                      update((f) => void f.duplicateKeys.splice(i, 1))
+                    }
+                  >
                     ×
                   </button>
                 </span>
               ))}
               <AddColumn
                 exclude={form.duplicateKeys}
-                onAdd={(column) => update((f) => void f.duplicateKeys.push(column))}
+                onAdd={(column) =>
+                  update((f) => void f.duplicateKeys.push(column))
+                }
               />
             </div>
           </Section>
@@ -544,16 +781,35 @@ export default function RulesPage({
           <Section
             title="날짜"
             help="날짜로 읽을 수 없는 값은 '오류', 연구 기간 밖의 날짜는 '확인 필요'로 표시합니다. 기간은 비워 두면 형식만 검사합니다."
-            onAdd={() => update((f) => void f.dates.push({ column: '', min: '', max: '' }))}
+            onAdd={() =>
+              update((f) => void f.dates.push({ column: "", min: "", max: "" }))
+            }
           >
             {form.dates.map((row, i) => (
               <div className="rule-row" key={i}>
-                <ColumnInput value={row.column} onChange={(v) => update((f) => void (f.dates[i].column = v))} />
-                <input type="date" value={row.min} onChange={(e) => update((f) => void (f.dates[i].min = e.target.value))} />
+                <ColumnInput
+                  value={row.column}
+                  onChange={(v) => update((f) => void (f.dates[i].column = v))}
+                />
+                <input
+                  type="date"
+                  value={row.min}
+                  onChange={(e) =>
+                    update((f) => void (f.dates[i].min = e.target.value))
+                  }
+                />
                 <span>~</span>
-                <input type="date" value={row.max} onChange={(e) => update((f) => void (f.dates[i].max = e.target.value))} />
+                <input
+                  type="date"
+                  value={row.max}
+                  onChange={(e) =>
+                    update((f) => void (f.dates[i].max = e.target.value))
+                  }
+                />
                 <Observed profile={profiles.get(row.column)} />
-                <RemoveButton onClick={() => update((f) => void f.dates.splice(i, 1))} />
+                <RemoveButton
+                  onClick={() => update((f) => void f.dates.splice(i, 1))}
+                />
               </div>
             ))}
           </Section>
@@ -561,15 +817,30 @@ export default function RulesPage({
           <Section
             title="컬럼 간 조건"
             help="한 행 안에서 두 값의 관계를 검사합니다. 오른쪽에는 컬럼 이름이나 숫자를 넣을 수 있습니다. 예: SBP > DBP"
-            onAdd={() => update((f) => void f.cross.push({ left: '', op: '>', right: '', detail: '' }))}
+            onAdd={() =>
+              update(
+                (f) =>
+                  void f.cross.push({
+                    left: "",
+                    op: ">",
+                    right: "",
+                    detail: "",
+                  }),
+              )
+            }
           >
             {form.cross.map((row, i) => (
               <div className="rule-row" key={i}>
-                <ColumnInput value={row.left} onChange={(v) => update((f) => void (f.cross[i].left = v))} />
+                <ColumnInput
+                  value={row.left}
+                  onChange={(v) => update((f) => void (f.cross[i].left = v))}
+                />
                 <select
                   className="narrow"
                   value={row.op}
-                  onChange={(e) => update((f) => void (f.cross[i].op = e.target.value))}
+                  onChange={(e) =>
+                    update((f) => void (f.cross[i].op = e.target.value))
+                  }
                 >
                   {OPERATORS.map((op) => (
                     <option key={op}>{op}</option>
@@ -584,9 +855,13 @@ export default function RulesPage({
                   className="grow"
                   placeholder="결과에 보일 설명 (선택)"
                   value={row.detail}
-                  onChange={(e) => update((f) => void (f.cross[i].detail = e.target.value))}
+                  onChange={(e) =>
+                    update((f) => void (f.cross[i].detail = e.target.value))
+                  }
                 />
-                <RemoveButton onClick={() => update((f) => void f.cross.splice(i, 1))} />
+                <RemoveButton
+                  onClick={() => update((f) => void f.cross.splice(i, 1))}
+                />
               </div>
             ))}
           </Section>
@@ -598,7 +873,7 @@ export default function RulesPage({
         <pre>{JSON.stringify(rules, null, 2)}</pre>
       </details>
     </div>
-  )
+  );
 }
 
 // 규칙이 언제 저장·적용되는지 헷갈리지 않도록 상태를 항상 보여 준다
@@ -607,43 +882,49 @@ function SaveStatus({
   hasErrors,
   onStartScreening,
 }: {
-  autoSave: AutoSave
-  hasErrors: boolean
-  onStartScreening: () => void
+  autoSave: AutoSave;
+  hasErrors: boolean;
+  onStartScreening: () => void;
 }) {
-  if (autoSave?.state === 'failed') {
+  if (autoSave?.state === "failed") {
     return (
       <div className="message message-warning save-status">
         <span className="grow">
-          <strong>이 브라우저에 자동 저장할 수 없습니다.</strong> (개인정보 보호 모드 등) 편집한 규칙은 지금 스크리닝에는
-          적용되지만, 새로고침하면 사라지니 [규칙 파일로 내보내기]로 저장해 두세요.
+          <strong>이 브라우저에 자동 저장할 수 없습니다.</strong> (개인정보 보호
+          모드 등) 편집한 규칙은 지금 스크리닝에는 적용되지만, 새로고침하면
+          사라지니 [규칙 파일로 내보내기]로 저장해 두세요.
         </span>
       </div>
-    )
+    );
   }
 
   if (hasErrors) {
     return (
       <div className="message message-warning save-status">
         <span className="grow">
-          <strong>편집 내용은 자동 저장되었습니다.</strong> 아래 오류를 고쳐야 이 규칙으로 스크리닝을 실행할 수 있습니다.
+          <strong>편집 내용은 자동 저장되었습니다.</strong> 아래 오류를 고쳐야
+          이 규칙으로 스크리닝을 실행할 수 있습니다.
         </span>
       </div>
-    )
+    );
   }
 
-  const time = autoSave?.state === 'saved' ? autoSave.at.toLocaleTimeString('ko-KR') : null
+  const time =
+    autoSave?.state === "saved"
+      ? autoSave.at.toLocaleTimeString("ko-KR")
+      : null;
   return (
     <div className="message message-ok save-status">
       <span className="grow">
-        <strong>✓ 자동 저장됨{time && ` · ${time}`}</strong> 편집한 규칙은 이 브라우저에 저장되고 [스크리닝] 탭에 바로
-        적용됩니다. 따로 저장 버튼을 누르지 않아도 됩니다.
+        <strong>✓ 자동 저장됨{time && ` · ${time}`}</strong> 편집한 규칙은 이
+        브라우저에 저장되고 [스크리닝] 탭에 바로 적용됩니다. 따로 저장 버튼을
+        누르지 않아도 됩니다.
       </span>
       <button className="button" onClick={onStartScreening}>
         이 규칙으로 스크리닝 →
       </button>
     </div>
-  )
+  );
 }
 
 function Section({
@@ -652,10 +933,10 @@ function Section({
   onAdd,
   children,
 }: {
-  title: string
-  help: string
-  onAdd?: () => void
-  children: ReactNode
+  title: string;
+  help: string;
+  onAdd?: () => void;
+  children: ReactNode;
 }) {
   return (
     <section className="card">
@@ -670,17 +951,17 @@ function Section({
       <p className="muted">{help}</p>
       <div className="rule-rows">{children}</div>
     </section>
-  )
+  );
 }
 
 function ColumnInput({
   value,
   onChange,
-  placeholder = '컬럼',
+  placeholder = "컬럼",
 }: {
-  value: string
-  onChange: (value: string) => void
-  placeholder?: string
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
 }) {
   return (
     <input
@@ -690,25 +971,30 @@ function ColumnInput({
       value={value}
       onChange={(e) => onChange(e.target.value)}
     />
-  )
+  );
 }
 
 function RemoveButton({ onClick }: { onClick: () => void }) {
   return (
-    <button className="icon-button" aria-label="삭제" title="삭제" onClick={onClick}>
+    <button
+      className="icon-button"
+      aria-label="삭제"
+      title="삭제"
+      onClick={onClick}
+    >
       ×
     </button>
-  )
+  );
 }
 
 function Observed({ profile }: { profile?: ColumnProfile }) {
-  if (!profile || profile.min === undefined) return null
+  if (!profile || profile.min === undefined) return null;
   return (
     <span className="muted small">
       관측 {profile.min} ~ {profile.max}
-      {profile.invalid ? ` · 읽을 수 없는 값 ${profile.invalid}개` : ''}
+      {profile.invalid ? ` · 읽을 수 없는 값 ${profile.invalid}개` : ""}
     </span>
-  )
+  );
 }
 
 function AllowedValues({
@@ -717,26 +1003,27 @@ function AllowedValues({
   levels,
   onChange,
 }: {
-  values: string[]
-  observed?: Record<string, number>
+  values: string[];
+  observed?: Record<string, number>;
   // 코드를 적용한 변수의 코드와 라벨. 있으면 데이터의 값 대신 코드를 제안한다 (오류 값이 제안되지 않도록)
-  levels?: CodeLevel[]
-  onChange: (values: string[]) => void
+  levels?: CodeLevel[];
+  onChange: (values: string[]) => void;
 }) {
-  const [input, setInput] = useState('')
-  const labelOf = (value: string) => levels?.find((level) => String(level.code) === value)?.label
+  const [input, setInput] = useState("");
+  const labelOf = (value: string) =>
+    levels?.find((level) => String(level.code) === value)?.label;
   const suggestions: [string, string | number][] = levels
     ? levels.map((level) => [String(level.code), level.label])
-    : Object.entries(observed ?? {})
-  const remaining = suggestions.filter(([value]) => !values.includes(value))
+    : Object.entries(observed ?? {});
+  const remaining = suggestions.filter(([value]) => !values.includes(value));
 
   function add(text: string) {
     const items = text
-      .split(',')
+      .split(",")
       .map((t) => t.trim())
-      .filter((t) => t && !values.includes(t))
-    if (items.length) onChange([...values, ...items])
-    setInput('')
+      .filter((t) => t && !values.includes(t));
+    if (items.length) onChange([...values, ...items]);
+    setInput("");
   }
 
   return (
@@ -746,7 +1033,10 @@ function AllowedValues({
           <span className="chip on" key={value}>
             {value}
             {labelOf(value) && <span className="muted">{labelOf(value)}</span>}
-            <button aria-label={`${value} 빼기`} onClick={() => onChange(values.filter((v) => v !== value))}>
+            <button
+              aria-label={`${value} 빼기`}
+              onClick={() => onChange(values.filter((v) => v !== value))}
+            >
               ×
             </button>
           </span>
@@ -757,9 +1047,9 @@ function AllowedValues({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ',') {
-              e.preventDefault()
-              add(input)
+            if (e.key === "Enter" || e.key === ",") {
+              e.preventDefault();
+              add(input);
             }
           }}
           onBlur={() => input && add(input)}
@@ -767,25 +1057,37 @@ function AllowedValues({
       </div>
       {remaining.length > 0 && (
         <div className="chips suggestions">
-          <span className="muted small">{levels ? '코드:' : '데이터의 값:'}</span>
+          <span className="muted small">
+            {levels ? "코드:" : "데이터의 값:"}
+          </span>
           {remaining.map(([value, detail]) => (
-            <button className="chip" key={value} onClick={() => onChange([...values, value])}>
+            <button
+              className="chip"
+              key={value}
+              onClick={() => onChange([...values, value])}
+            >
               + {value} <span className="muted">{detail}</span>
             </button>
           ))}
         </div>
       )}
     </div>
-  )
+  );
 }
 
-function AddColumn({ exclude, onAdd }: { exclude: string[]; onAdd: (column: string) => void }) {
-  const [value, setValue] = useState('')
+function AddColumn({
+  exclude,
+  onAdd,
+}: {
+  exclude: string[];
+  onAdd: (column: string) => void;
+}) {
+  const [value, setValue] = useState("");
 
   function submit() {
-    const column = value.trim()
-    if (column && !exclude.includes(column)) onAdd(column)
-    setValue('')
+    const column = value.trim();
+    if (column && !exclude.includes(column)) onAdd(column);
+    setValue("");
   }
 
   return (
@@ -796,14 +1098,14 @@ function AddColumn({ exclude, onAdd }: { exclude: string[]; onAdd: (column: stri
       value={value}
       onChange={(e) => setValue(e.target.value)}
       onKeyDown={(e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault()
-          submit()
+        if (e.key === "Enter") {
+          e.preventDefault();
+          submit();
         }
       }}
       onBlur={submit}
     />
-  )
+  );
 }
 
 function PatternTester({
@@ -811,27 +1113,27 @@ function PatternTester({
   examples,
   onPattern,
 }: {
-  pattern: string
-  examples?: string[]
-  onPattern: (pattern: string) => void
+  pattern: string;
+  examples?: string[];
+  onPattern: (pattern: string) => void;
 }) {
-  const [sample, setSample] = useState('')
+  const [sample, setSample] = useState("");
 
   const regex = useMemo(() => {
     try {
-      return pattern ? new RegExp(pattern) : null
+      return pattern ? new RegExp(pattern) : null;
     } catch {
-      return null
+      return null;
     }
-  }, [pattern])
+  }, [pattern]);
 
   // Python fullmatch와 같게: 문자열 전체가 맞아야 통과
   const test = (text: string) => {
-    if (!regex) return null
-    const match = text.trim().match(regex)
-    return !!match && match[0] === text.trim()
-  }
-  const result = sample ? test(sample) : null
+    if (!regex) return null;
+    const match = text.trim().match(regex);
+    return !!match && match[0] === text.trim();
+  };
+  const result = sample ? test(sample) : null;
 
   return (
     <div className="rule-row">
@@ -842,14 +1144,23 @@ function PatternTester({
         onChange={(e) => setSample(e.target.value)}
       />
       {result !== null && (
-        <span className={result ? 'text-ok' : 'text-error'}>{result ? '형식에 맞음' : '형식에 맞지 않음'}</span>
+        <span className={result ? "text-ok" : "text-error"}>
+          {result ? "형식에 맞음" : "형식에 맞지 않음"}
+        </span>
       )}
       {sample.trim() && (
-        <button className="button button-ghost" onClick={() => onPattern(patternFromExample(sample))}>
+        <button
+          className="button button-ghost"
+          onClick={() => onPattern(patternFromExample(sample))}
+        >
           이 예시로 형식 만들기
         </button>
       )}
-      {examples && examples.length > 0 && <span className="muted small">데이터 예: {examples.slice(0, 3).join(', ')}</span>}
+      {examples && examples.length > 0 && (
+        <span className="muted small">
+          데이터 예: {examples.slice(0, 3).join(", ")}
+        </span>
+      )}
     </div>
-  )
+  );
 }

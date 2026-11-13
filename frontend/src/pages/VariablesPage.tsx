@@ -275,10 +275,12 @@ function Variables({
     const merged: Codebook = { ...dataFile.codebook };
     for (const bin of check.plan.bins) {
       const labels = binLabels(bin.cuts, bin.right_closed);
+      // 구간은 원래 순서가 있으므로 R에서도 순서형으로 만든다
       merged[bin.new_column] = bin.codes.map((code, i) => ({
         code,
         label: labels[i],
         sources: [],
+        ordered: true,
       }));
     }
     return merged;
