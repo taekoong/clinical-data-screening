@@ -11,6 +11,7 @@ KNOWN_KEYS = {
     "duplicate_keys",
     "date_columns",
     "cross_checks",
+    "allow_missing",
 }
 
 
@@ -59,6 +60,10 @@ def validate_rules(rules):
     if not isinstance(keys, list) or not all(isinstance(k, str) and k for k in keys):
         errors.append("duplicate_keys: 컬럼 이름 목록이어야 합니다.")
 
+    allow_missing = rules.get("allow_missing", [])
+    if not isinstance(allow_missing, list) or not all(isinstance(c, str) and c for c in allow_missing):
+        errors.append("allow_missing: 컬럼 이름 목록이어야 합니다.")
+
     for col, limits in rules.get("date_columns", {}).items():
         where = f"date_columns.{col}"
         if not isinstance(limits, dict):
@@ -106,5 +111,7 @@ def check_rules_against_data(df, rules):
         missing(check["left"], "컬럼 간 논리 검사")
         if isinstance(check["right"], str):
             missing(check["right"], "컬럼 간 논리 검사")
+    for col in rules.get("allow_missing", []):
+        missing(col, "결측 허용")
 
     return warnings

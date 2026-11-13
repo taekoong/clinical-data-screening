@@ -68,7 +68,7 @@ def add_issue(
 
 
 # 1. 공통 스크리닝(결측값, 앞뒤 공백, 데이터형식 오류)
-def check_common(df, issues, sheet_name, skip_typo_columns=()):
+def check_common(df, issues, sheet_name, skip_typo_columns=(), skip_missing_columns=()):
     for col_idx, col in enumerate(df.columns):
         series = df.iloc[:, col_idx]
         values = series.dropna().astype(str).str.strip()
@@ -96,16 +96,17 @@ def check_common(df, issues, sheet_name, skip_typo_columns=()):
 
             # 결측값 검사
             if is_blank(value):
-                add_issue(
-                    issues,
-                    sheet=sheet_name,
-                    row=row,
-                    column=str(col),
-                    cell=cell,
-                    value=value,
-                    code="MISSING_VALUE",
-                    detail="값이 비어 있습니다."
-                )
+                if col not in skip_missing_columns:
+                    add_issue(
+                        issues,
+                        sheet=sheet_name,
+                        row=row,
+                        column=str(col),
+                        cell=cell,
+                        value=value,
+                        code="MISSING_VALUE",
+                        detail="값이 비어 있습니다."
+                    )
                 continue
 
             text = str(value)
@@ -467,7 +468,7 @@ def validate_data(df, rules=None, sheet_name="Raw_Data"):
     if id_rule.get("column"):
         skip_columns.add(id_rule["column"])
 
-    check_common(df, issues, sheet_name, set(categorical_rules))
+    check_common(df, issues, sheet_name, set(categorical_rules), set(rules.get("allow_missing", [])))
     check_numeric_ranges(df, issues, sheet_name, rules.get("numeric_columns", {}))
     check_categories(df, issues, sheet_name, categorical_rules)
     check_label_variants(df, issues, sheet_name, skip_columns)

@@ -136,3 +136,17 @@ def test_table_matches_issue_cells(rules):
         if issue.Excel_Row > 1:
             col = table["columns"].index(issue.Column)
             assert table["rows"][issue.Excel_Row - 2][col] == issue.Original_Value
+
+
+def test_allow_missing_skips_blank_cells(rules):
+    data = TEST_FILE.read_bytes()
+    before = run_screening(data, rules)["issues"]
+    assert "K3" in set(before.loc[before["Issue_Type"] == "MISSING_VALUE", "Cell"])
+
+    after = run_screening(data, {**rules, "allow_missing": ["Heart_Rate"]})["issues"]
+    assert "K3" not in set(after["Cell"])
+    assert len(after) == len(before) - 1
+
+
+def test_allow_missing_must_be_column_list():
+    assert any("allow_missing" in e for e in validate_rules({"allow_missing": "Heart_Rate"}))

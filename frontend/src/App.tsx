@@ -45,7 +45,11 @@ const DRAFT_KEY = "clinical-screening:rules-draft";
 function loadDraft(): RulesDraft {
   try {
     const saved = localStorage.getItem(DRAFT_KEY);
-    if (saved) return JSON.parse(saved);
+    if (saved) {
+      const draft = JSON.parse(saved) as RulesDraft;
+      // 예전에 저장한 초안에는 없는 항목(결측 허용 등)을 빈 값으로 채운다
+      return { ...draft, form: { ...emptyForm(), ...draft.form } };
+    }
   } catch {
     // 저장소를 쓸 수 없는 환경이면 빈 규칙으로 시작
   }

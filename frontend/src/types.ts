@@ -72,6 +72,7 @@ export interface Rules {
   duplicate_keys?: string[];
   date_columns?: Record<string, { min?: string; max?: string }>;
   cross_checks?: CrossCheck[];
+  allow_missing?: string[];
 }
 
 export type ColumnType = "numeric" | "date" | "categorical" | "text" | "empty";

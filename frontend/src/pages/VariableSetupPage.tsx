@@ -2,7 +2,12 @@ import { useState, type KeyboardEvent } from "react";
 import type { DataFile, RulesDraft } from "../App";
 import DataFilePicker from "../components/DataFilePicker";
 import type { ScreeningEngine } from "../engine/engine";
-import { getRange, setRange, type RulesForm } from "../rulesForm";
+import {
+  getRange,
+  setAllowMissing,
+  setRange,
+  type RulesForm,
+} from "../rulesForm";
 import type {
   CodeLevel,
   ColumnProfile,
@@ -376,6 +381,26 @@ function Setup({
                   type={typeOf(activeProfile)}
                   onReset={(t) => setType(active, t)}
                 />
+                <label
+                  className="inline small"
+                  title="선택 항목처럼 비어 있어도 되는 변수는 스크리닝에서 빈 칸을 문제로 보지 않습니다"
+                >
+                  <input
+                    type="checkbox"
+                    checked={draft.form.allowMissing.includes(active)}
+                    onChange={(e) =>
+                      onDraft({
+                        ...draft,
+                        form: setAllowMissing(
+                          draft.form,
+                          active,
+                          e.target.checked,
+                        ),
+                      })
+                    }
+                  />
+                  결측 허용
+                </label>
               </div>
               {applied?.[active] ? (
                 <AppliedCodes levels={applied[active]} />

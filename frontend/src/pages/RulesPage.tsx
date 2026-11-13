@@ -258,7 +258,10 @@ export default function RulesPage({
                   const empty = !range.min.trim() && !range.max.trim()
                   return (
                     <div className="rule-row" key={p.column}>
-                      <span className="rule-name">{p.column}</span>
+                      <span className="rule-name">
+                        {p.column}
+                        {form.allowMissing.includes(p.column) && <span className="muted small"> · 결측 허용</span>}
+                      </span>
                       <input
                         className="narrow"
                         inputMode="decimal"
@@ -295,6 +298,7 @@ export default function RulesPage({
                       <span className="rule-name">
                         {p.column}
                         {!allowed.length && <span className="muted small"> ⚠ 검사 안 함</span>}
+                        {form.allowMissing.includes(p.column) && <span className="muted small"> · 결측 허용</span>}
                       </span>
                       <AllowedValues
                         values={allowed}
@@ -317,7 +321,10 @@ export default function RulesPage({
                   const limits = (min: string, max: string) => setForm(setDateRule(form, p.column, { min, max }))
                   return (
                     <div className="rule-row" key={p.column}>
-                      <span className="rule-name">{p.column}</span>
+                      <span className="rule-name">
+                        {p.column}
+                        {form.allowMissing.includes(p.column) && <span className="muted small"> · 결측 허용</span>}
+                      </span>
                       <label className="inline">
                         <input
                           type="checkbox"
