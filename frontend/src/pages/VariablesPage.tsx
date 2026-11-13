@@ -45,6 +45,7 @@ import {
   type BinSettings,
   type VariablesFile,
 } from "../variablesPlan";
+import { saveWorkspace, savedWorkspace, summaryKey } from "../workspace";
 
 const XLSX_TYPE =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -114,9 +115,18 @@ function Variables({
   onGoToSetup,
 }: Props & { dataFile: DataFile }) {
   const profiles = dataFile.info.columns;
+  // 새로고침 전의 변수 선택·구간 설정 (같은 파일·시트일 때만)
+  const [saved] = useState(() => {
+    const summary = savedWorkspace().summary;
+    return summary?.fileKey === summaryKey(dataFile) ? summary : undefined;
+  });
   // selected: 다운로드(요약표·코딩 파일)에 넣을 변수, active: 오른쪽에 요약을 보여 줄 변수
   const [selected, setSelected] = useState<Set<string>>(
-    () => new Set(profiles.filter(selectedByDefault).map((p) => p.column)),
+    () =>
+      new Set(
+        saved?.selected ??
+          profiles.filter(selectedByDefault).map((p) => p.column),
+      ),
   );
   const [active, setActive] = useState(
     () => (profiles.find(selectedByDefault) ?? profiles[0])?.column ?? "",
@@ -127,12 +137,25 @@ function Variables({
   }));
   const [failed, setFailed] = useState("");
   const inflight = useRef("");
-  const [bins, setBins] = useState<BinSettings>({});
+  const [bins, setBins] = useState<BinSettings>(saved?.bins ?? {});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [excludeOutOfRange, setExcludeOutOfRange] = useState(false);
+  const [excludeOutOfRange, setExcludeOutOfRange] = useState(
+    saved?.excludeOutOfRange ?? false,
+  );
   const rules = useMemo(() => formToRules(draft.form), [draft.form]);
+
+  useEffect(() => {
+    saveWorkspace({
+      summary: {
+        fileKey: summaryKey(dataFile),
+        bins,
+        selected: [...selected],
+        excludeOutOfRange,
+      },
+    });
+  }, [dataFile, bins, selected, excludeOutOfRange]);
 
   const typeOf = (column: string): VariableType => {
     const profile = profiles.find((p) => p.column === column)!;

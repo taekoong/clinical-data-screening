@@ -1023,3 +1023,15 @@ table.variable-list tr.active td:first-child {
 .settings-row {
   margin-top: 8px;
 }
+
+/* 새로고침 후 이어서 열었을 때의 안내 */
+.resume-notice {
+  margin-bottom: 16px;
+  border: 1px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.resume-notice strong {
+  color: var(--accent);
+}

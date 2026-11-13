@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { DataFile, RulesDraft } from "../App";
 import DataFilePicker from "../components/DataFilePicker";
 import { parseCell, type CellPos } from "../cells";
@@ -11,6 +11,7 @@ import { analysisFileName, downloadBlob, errorText, fileStem } from "../files";
 import { isNumericIssue, issueLabel, SEVERITY_LABELS } from "../issueTypes";
 import { formErrors, formToRules } from "../rulesForm";
 import { codeLabel } from "../variablesPlan";
+import { saveWorkspace, savedWorkspace, screeningKey } from "../workspace";
 import {
   SEVERITIES,
   type CellEdit,
@@ -50,11 +51,18 @@ export default function ScreeningPage({
   onDraft,
   onEditRules,
 }: Props) {
-  const [useRules, setUseRules] = useState(true);
+  // 새로고침 전에 고치던 값 (같은 파일일 때만 이어서 쓴다)
+  const [restored] = useState(() => {
+    const saved = savedWorkspace().screening;
+    return saved && dataFile && saved.fileKey === screeningKey(dataFile)
+      ? saved
+      : undefined;
+  });
+  const [useRules, setUseRules] = useState(restored?.useRules ?? true);
   const [running, setRunning] = useState(false);
   const [run, setRun] = useState<Run | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
-  const [edits, setEdits] = useState<Edits>({});
+  const [edits, setEdits] = useState<Edits>(restored?.edits ?? {});
   const [applying, setApplying] = useState(false);
   const [editError, setEditError] = useState("");
   const [unsaved, setUnsaved] = useState(false);
@@ -62,6 +70,28 @@ export default function ScreeningPage({
   const rules = useMemo(() => formToRules(draft.form), [draft.form]);
   const ruleCount = Object.keys(rules).length;
   const pendingCount = Object.keys(edits).length;
+
+  // 고치던 값과 검사 여부를 보관해 두었다가, 새로고침하면 검사를 다시 돌려 이어서 고칠 수 있게 한다
+  useEffect(() => {
+    const file = run?.file ?? dataFile;
+    saveWorkspace({
+      screening: file
+        ? { fileKey: screeningKey(file), edits, ran: Boolean(run), useRules }
+        : undefined,
+    });
+  }, [run, dataFile, edits, useRules]);
+
+  const resumeRun = useRef(Boolean(restored?.ran));
+  useEffect(() => {
+    if (!ready || !dataFile || !resumeRun.current) return;
+    const timer = setTimeout(() => {
+      resumeRun.current = false;
+      screen(dataFile);
+    }, 0);
+    return () => clearTimeout(timer);
+    // 엔진이 준비되면 한 번만 다시 검사한다 (screen은 매 렌더마다 새로 만들어지므로 넣지 않는다)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, dataFile]);
 
   // 고친 내용을 저장하지 않고 창을 닫으려 하면 확인 창 띄우기
   useEffect(() => {

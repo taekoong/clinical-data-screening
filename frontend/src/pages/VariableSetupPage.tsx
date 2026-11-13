@@ -22,6 +22,7 @@ import {
   type CodeInputs,
   type CodeRow,
 } from "../variablesPlan";
+import { saveWorkspace, savedWorkspace, setupKey } from "../workspace";
 
 const TYPES = Object.keys(TYPE_LABELS) as VariableType[];
 const ANALYSIS_SHEET = "Analysis_Data";
@@ -87,9 +88,12 @@ function Setup({
 }) {
   const profiles = dataFile.info.columns;
   const [active, setActive] = useState(profiles[0]?.column ?? "");
-  const [codeInputs, setCodeInputs] = useState<CodeInputs>(() =>
-    inputsFromCodebook(dataFile.codebook),
-  );
+  // 코드를 적용했으면 그 코드북으로, 아니면 새로고침 전에 입력하던 값으로 시작한다
+  const [codeInputs, setCodeInputs] = useState<CodeInputs>(() => {
+    if (dataFile.codebook) return inputsFromCodebook(dataFile.codebook);
+    const saved = savedWorkspace().codeInputs;
+    return saved?.fileKey === setupKey(dataFile) ? saved.inputs : {};
+  });
   // 코드북이 있는 변수: 코드북에 없던 값은 일부러 비워 둔 것이므로 기본 코드를 붙이지 않는다
   const [restored, setRestored] = useState(
     () => new Set(Object.keys(dataFile.codebook ?? {})),
@@ -155,10 +159,12 @@ function Setup({
   }
 
   function updateRow(column: string, row: CodeRow) {
-    setCodeInputs({
+    const next = {
       ...codeInputs,
       [column]: { ...codeInputs[column], [row.source]: row },
-    });
+    };
+    setCodeInputs(next);
+    saveWorkspace({ codeInputs: { fileKey: setupKey(dataFile), inputs: next } });
   }
 
   // Analysis_Data 시트를 만들고, 이후 규칙·스크리닝은 이 시트를 기준으로 한다

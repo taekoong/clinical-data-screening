@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPyodideEngine, type EngineStatus } from "./engine/engine";
 import { emptyForm, type RulesForm } from "./rulesForm";
 import type { Codebook, WorkbookInfo, VariableType } from "./types";
@@ -6,6 +6,12 @@ import ScreeningPage from "./pages/ScreeningPage";
 import RulesPage from "./pages/RulesPage";
 import VariableSetupPage from "./pages/VariableSetupPage";
 import VariablesPage from "./pages/VariablesPage";
+import {
+  clearWorkspace,
+  loadWorkspace,
+  saveWorkspace,
+  type Workspace,
+} from "./workspace";
 import "./App.css";
 
 export interface DataFile {
@@ -31,6 +37,8 @@ export type AutoSave =
   | null;
 
 type Tab = "setup" | "rules" | "screening" | "summary";
+const TABS: Tab[] = ["setup", "rules", "screening", "summary"];
+const isTab = (value: unknown): value is Tab => TABS.includes(value as Tab);
 
 const DRAFT_KEY = "clinical-screening:rules-draft";
 
@@ -54,16 +62,56 @@ function saveDraft(draft: RulesDraft) {
   }
 }
 
+// 이 브라우저에 보관된 지난 작업을 먼저 읽고 화면을 연다 (각 화면이 처음 값을 보관된 작업에서 가져오도록)
 function App() {
+  const [restored, setRestored] = useState<Workspace | null>(null);
+  useEffect(() => {
+    loadWorkspace().then(setRestored);
+  }, []);
+  if (!restored) {
+    return (
+      <div className="app">
+        <p className="muted">이전 작업을 불러오는 중…</p>
+      </div>
+    );
+  }
+  return <Workbench initial={restored} />;
+}
+
+function Workbench({ initial }: { initial: Workspace }) {
   const [status, setStatus] = useState<EngineStatus>({
     state: "loading",
     message: "검사 엔진을 준비하는 중…",
   });
   const engine = useMemo(() => createPyodideEngine(setStatus), []);
-  const [tab, setTab] = useState<Tab>("setup");
-  const [dataFile, setDataFile] = useState<DataFile | null>(null);
+  const [tab, setTab] = useState<Tab>(() =>
+    initial.dataFile && isTab(initial.tab) ? initial.tab : "setup",
+  );
+  const [dataFile, setDataFile] = useState<DataFile | null>(initial.dataFile);
   const [draft, setDraft] = useState<RulesDraft>(loadDraft);
   const [autoSave, setAutoSave] = useState<AutoSave>(null);
+  const [resumed, setResumed] = useState(Boolean(initial.dataFile));
+  // [새로 시작]하면 모든 화면을 처음 상태로 다시 연다
+  const [session, setSession] = useState(0);
+
+  // 올린 파일(고친 값 포함)과 보던 탭은 바뀔 때마다 이 브라우저에 보관한다
+  useEffect(() => {
+    saveWorkspace({ dataFile, tab });
+  }, [dataFile, tab]);
+
+  function startOver() {
+    if (
+      !confirm(
+        "지금 작업을 지우고 새로 시작할까요? 내려받지 않은 수정 내용은 사라집니다. (규칙은 남습니다)",
+      )
+    )
+      return;
+    clearWorkspace();
+    setDataFile(null);
+    setTab("setup");
+    setResumed(false);
+    setSession((n) => n + 1);
+  }
 
   // 규칙은 고칠 때마다 이 브라우저에 자동 저장되고, 스크리닝에도 바로 적용된다
   function updateDraft(next: RulesDraft) {
@@ -87,6 +135,28 @@ function App() {
         </div>
         <EngineBadge status={status} />
       </header>
+
+      {resumed && dataFile && (
+        <div className="message save-status resume-notice">
+          <span className="grow">
+            <strong>이전 작업을 이어서 열었습니다: {dataFile.name}</strong>
+            {dataFile.editedCells
+              ? ` (반영한 수정 ${dataFile.editedCells}건)`
+              : ""}
+            . 작성하던 내용은 이 브라우저에 자동으로 보관됩니다.
+          </span>
+          <button className="button button-ghost" onClick={startOver}>
+            새로 시작
+          </button>
+          <button
+            className="icon-button"
+            aria-label="안내 닫기"
+            onClick={() => setResumed(false)}
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       <nav className="tabs" role="tablist">
         <button
@@ -120,7 +190,7 @@ function App() {
       </nav>
 
       {/* 탭을 옮겨도 검사 결과와 고치던 값이 사라지지 않도록 모든 화면을 유지하고 숨기기만 한다 */}
-      <main>
+      <main key={session}>
         <div hidden={tab !== "setup"}>
           <VariableSetupPage
             engine={engine}
