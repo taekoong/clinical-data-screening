@@ -10,7 +10,7 @@ import type {
   Codebook,
 } from "../types";
 import ValueText from "../components/ValueText";
-import { analysisFileName, downloadBlob, errorText, fileStem } from "../files";
+import { errorText } from "../files";
 import {
   checkRows,
   defaultRows,
@@ -127,7 +127,6 @@ function Setup({
           ),
       );
   const canExport = Object.keys(codebook).length > 0 && codeErrors.length === 0;
-  const excelName = analysisFileName(dataFile.name);
 
   function setType(column: string, type: VariableType) {
     onDataFile({
@@ -196,39 +195,6 @@ function Setup({
       });
     } catch (e) {
       setExportError(`원본 시트를 열지 못했습니다: ${errorText(e)}`);
-    } finally {
-      setExporting(false);
-    }
-  }
-
-  async function download(kind: "excel" | "r") {
-    setExporting(true);
-    setExportError("");
-    try {
-      if (kind === "excel") {
-        // 적용한 뒤에는 스크리닝에서 고친 값까지 담긴 지금 파일을 내려받는다
-        const bytes = applied
-          ? dataFile.bytes
-          : await engine.exportAnalysis(
-              dataFile.bytes,
-              dataFile.info.sheet,
-              codebook,
-            );
-        downloadBlob(
-          new Blob([bytes], {
-            type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          }),
-          excelName,
-        );
-      } else {
-        const script = await engine.rScript(excelName, codebook);
-        downloadBlob(
-          new Blob([script], { type: "text/plain;charset=utf-8" }),
-          `${fileStem(dataFile.name)}_load_data.R`,
-        );
-      }
-    } catch (e) {
-      setExportError(`파일을 만들지 못했습니다: ${errorText(e)}`);
     } finally {
       setExporting(false);
     }
