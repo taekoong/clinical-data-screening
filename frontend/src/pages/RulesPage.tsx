@@ -9,13 +9,18 @@ import {
   emptyForm,
   formErrors,
   formToRules,
+  getRange,
   missingColumns,
   OPERATORS,
   patternFromExample,
   rulesToForm,
+  setAllowed,
+  setDateRule,
+  setRange,
   type RulesForm,
 } from '../rulesForm'
-import type { CodeLevel, ColumnProfile, Rules } from '../types'
+import type { CodeLevel, ColumnProfile, Rules, VariableType } from '../types'
+import { inferredType, TYPE_LABELS } from '../variablesPlan'
 import exampleRulesJson from '../../../data/study_rules.json?raw'
 
 interface Props {
@@ -30,6 +35,22 @@ interface Props {
 }
 
 const COLUMN_LIST_ID = 'rule-columns'
+
+// 데이터를 불러오면 변수 유형별 탭으로 규칙을 정한다 (텍스트 변수는 규칙이 없어 탭을 두지 않는다)
+type RuleTab = 'continuous' | 'categorical' | 'date' | 'identifier' | 'common'
+const TYPE_TABS: { key: Exclude<RuleTab, 'common'>; help: string }[] = [
+  { key: 'continuous', help: "최소~최대를 벗어나면 '허용 범위 밖'으로 표시합니다. 비워 두면 범위를 검사하지 않습니다." },
+  { key: 'categorical', help: "허용값 외의 값은 '허용되지 않는 값'으로 표시합니다. 허용값이 없으면 검사하지 않습니다." },
+  { key: 'date', help: "[검사]를 켜면 날짜로 읽을 수 없는 값을 '오류'로, 기간 밖의 날짜를 '확인 필요'로 표시합니다." },
+  { key: 'identifier', help: 'ID가 형식(정규식)에 맞지 않으면 \'오류\'로 표시합니다. 예시 ID를 넣으면 형식을 자동으로 만들어 줍니다.' },
+]
+
+// 규칙 종류와 그 규칙이 맞는 변수 유형 (유형을 바꾸면 남은 규칙을 알려 준다)
+const RULE_KINDS = [
+  { kind: 'numeric', label: '숫자 범위', type: 'continuous' },
+  { kind: 'categorical', label: '범주형 허용값', type: 'categorical' },
+  { kind: 'dates', label: '날짜 규칙', type: 'date' },
+] as const
 
 export default function RulesPage({
   engine,
@@ -50,6 +71,14 @@ export default function RulesPage({
     [dataFile],
   )
   const columns = [...profiles.keys()]
+  const [tab, setTab] = useState<RuleTab>('continuous')
+  const [query, setQuery] = useState('')
+
+  const typeOf = (p: ColumnProfile): VariableType => dataFile?.variableTypes?.[p.column] ?? inferredType(p)
+  const ofType = (type: VariableType) => (dataFile?.info.columns ?? []).filter((p) => typeOf(p) === type)
+  const matches = (p: ColumnProfile) => p.column.toLowerCase().includes(query.trim().toLowerCase())
+  const hasRule = (kind: 'numeric' | 'categorical' | 'dates', column: string) =>
+    form[kind].some((r) => r.column.trim() === column)
 
   // 입력이 멈추면 Python 규칙 검증을 돌린다 (스크리닝 때와 같은 검증)
   useEffect(() => {
@@ -69,6 +98,19 @@ export default function RulesPage({
 
   const errors = [...formErrors(form), ...ruleErrors]
   const missing = dataFile ? missingColumns(rules, columns) : []
+
+  // 데이터에 있는데 지금 유형과 맞지 않는 규칙 (예: 범주형으로 바꾼 Age에 남은 숫자 범위)
+  const stray = dataFile
+    ? RULE_KINDS.flatMap(({ kind, label, type }) =>
+        form[kind]
+          .map((row, index) => ({ kind, label, index, column: row.column.trim(), expected: type }))
+          .filter((r) => profiles.has(r.column) && typeOf(profiles.get(r.column)!) !== r.expected),
+      )
+    : []
+
+  function setForm(next: RulesForm) {
+    onDraft({ ...draft, form: next })
+  }
 
   function update(change: (next: RulesForm) => void) {
     const next = structuredClone(form)
@@ -153,141 +195,396 @@ export default function RulesPage({
         </div>
       )}
 
-      <Section
-        title="숫자 범위"
-        help="값이 최소~최대를 벗어나면 '허용 범위 밖'으로, 숫자가 아니면 '숫자 변환 불가'로 표시합니다. 임상적으로 가능한 범위를 입력하세요."
-        onAdd={() => update((f) => void f.numeric.push({ column: '', min: '', max: '' }))}
-      >
-        {form.numeric.map((row, i) => (
-          <div className="rule-row" key={i}>
-            <ColumnInput value={row.column} onChange={(v) => update((f) => void (f.numeric[i].column = v))} />
-            <input
-              className="narrow"
-              inputMode="decimal"
-              placeholder="최소"
-              value={row.min}
-              onChange={(e) => update((f) => void (f.numeric[i].min = e.target.value))}
-            />
-            <span>~</span>
-            <input
-              className="narrow"
-              inputMode="decimal"
-              placeholder="최대"
-              value={row.max}
-              onChange={(e) => update((f) => void (f.numeric[i].max = e.target.value))}
-            />
-            <Observed profile={profiles.get(row.column)} />
-            <RemoveButton onClick={() => update((f) => void f.numeric.splice(i, 1))} />
-          </div>
-        ))}
-      </Section>
-
-      <Section
-        title="범주형 허용값"
-        help={
-          dataFile?.codebook
-            ? "코드를 적용한 변수는 허용값을 코드(1, 2)로 입력합니다. 허용값 외의 값은 '허용되지 않는 값'으로 표시합니다."
-            : "허용값 외의 값은 '허용되지 않는 값'으로, 대소문자나 Male/Yes처럼 표기만 다른 값은 '표기 차이'로 표시합니다."
-        }
-        onAdd={() => update((f) => void f.categorical.push({ column: '', allowed: [] }))}
-      >
-        {form.categorical.map((row, i) => (
-          <div className="rule-row" key={i}>
-            <ColumnInput value={row.column} onChange={(v) => update((f) => void (f.categorical[i].column = v))} />
-            <AllowedValues
-              values={row.allowed}
-              observed={profiles.get(row.column)?.values}
-              levels={dataFile?.codebook?.[row.column.trim()]}
-              onChange={(values) => update((f) => void (f.categorical[i].allowed = values))}
-            />
-            <RemoveButton onClick={() => update((f) => void f.categorical.splice(i, 1))} />
-          </div>
-        ))}
-      </Section>
-
-      <Section title="대상자 ID 형식" help="ID가 형식(정규식)에 맞지 않으면 '오류'로 표시합니다. 예시 ID를 넣으면 형식을 자동으로 만들어 줍니다.">
-        <div className="rule-row">
-          <ColumnInput value={form.id.column} onChange={(v) => update((f) => void (f.id.column = v))} />
-          <input
-            className="mono grow"
-            placeholder="^SUBJ-\d{3}$"
-            value={form.id.pattern}
-            onChange={(e) => update((f) => void (f.id.pattern = e.target.value))}
-          />
+      {stray.length > 0 && (
+        <div className="message message-warning">
+          <strong>변수 유형과 맞지 않는 규칙이 있습니다.</strong> 변수 설정에서 유형을 확인하거나, 필요 없으면 지우세요.
+          <ul>
+            {stray.map((r) => (
+              <li key={`${r.kind}:${r.column}`}>
+                {r.column}: {r.label} (지금 유형: {TYPE_LABELS[typeOf(profiles.get(r.column)!)]}){' '}
+                <button className="link-button" onClick={() => update((f) => void f[r.kind].splice(r.index, 1))}>
+                  규칙 지우기
+                </button>
+              </li>
+            ))}
+          </ul>
         </div>
-        <PatternTester
-          pattern={form.id.pattern}
-          examples={profiles.get(form.id.column)?.examples}
-          onPattern={(p) => update((f) => void (f.id.pattern = p))}
-        />
-      </Section>
+      )}
 
-      <Section title="중복 레코드" help="고른 컬럼의 값 조합이 같은 행이 두 번 이상 있으면 '오류'로 표시합니다. 보통 대상자 ID + 방문입니다.">
-        <div className="chips">
-          {form.duplicateKeys.map((key, i) => (
-            <span className="chip on" key={key}>
-              {key}
-              <button aria-label={`${key} 빼기`} onClick={() => update((f) => void f.duplicateKeys.splice(i, 1))}>
-                ×
+      {dataFile ? (
+        <section className="card">
+          <div className="section-header">
+            <div className="segmented" role="tablist">
+              {TYPE_TABS.map(({ key }) => {
+                const list = ofType(key)
+                const done =
+                  key === 'identifier'
+                    ? list.filter((p) => form.id.column.trim() === p.column).length
+                    : list.filter((p) =>
+                        hasRule(key === 'continuous' ? 'numeric' : key === 'date' ? 'dates' : 'categorical', p.column),
+                      ).length
+                return (
+                  <button key={key} role="tab" aria-selected={tab === key} onClick={() => setTab(key)}>
+                    {TYPE_LABELS[key]} <span className="muted">{list.length ? `${done}/${list.length}` : 0}</span>
+                  </button>
+                )
+              })}
+              <button role="tab" aria-selected={tab === 'common'} onClick={() => setTab('common')}>
+                공통 규칙
               </button>
-            </span>
-          ))}
-          <AddColumn
-            exclude={form.duplicateKeys}
-            onAdd={(column) => update((f) => void f.duplicateKeys.push(column))}
-          />
-        </div>
-      </Section>
-
-      <Section
-        title="날짜"
-        help="날짜로 읽을 수 없는 값은 '오류', 연구 기간 밖의 날짜는 '확인 필요'로 표시합니다. 기간은 비워 두면 형식만 검사합니다."
-        onAdd={() => update((f) => void f.dates.push({ column: '', min: '', max: '' }))}
-      >
-        {form.dates.map((row, i) => (
-          <div className="rule-row" key={i}>
-            <ColumnInput value={row.column} onChange={(v) => update((f) => void (f.dates[i].column = v))} />
-            <input type="date" value={row.min} onChange={(e) => update((f) => void (f.dates[i].min = e.target.value))} />
-            <span>~</span>
-            <input type="date" value={row.max} onChange={(e) => update((f) => void (f.dates[i].max = e.target.value))} />
-            <Observed profile={profiles.get(row.column)} />
-            <RemoveButton onClick={() => update((f) => void f.dates.splice(i, 1))} />
+            </div>
+            {(tab === 'continuous' || tab === 'categorical' || tab === 'date') && (
+              <input type="search" placeholder="변수 이름 검색" value={query} onChange={(e) => setQuery(e.target.value)} />
+            )}
           </div>
-        ))}
-      </Section>
 
-      <Section
-        title="컬럼 간 조건"
-        help="한 행 안에서 두 값의 관계를 검사합니다. 오른쪽에는 컬럼 이름이나 숫자를 넣을 수 있습니다. 예: SBP > DBP"
-        onAdd={() => update((f) => void f.cross.push({ left: '', op: '>', right: '', detail: '' }))}
-      >
-        {form.cross.map((row, i) => (
-          <div className="rule-row" key={i}>
-            <ColumnInput value={row.left} onChange={(v) => update((f) => void (f.cross[i].left = v))} />
-            <select
-              className="narrow"
-              value={row.op}
-              onChange={(e) => update((f) => void (f.cross[i].op = e.target.value))}
-            >
-              {OPERATORS.map((op) => (
-                <option key={op}>{op}</option>
+          {tab !== 'common' && (
+            <p className="muted">
+              {TYPE_TABS.find((t) => t.key === tab)!.help} 숫자는 변수 이름 옆 '규칙 수/변수 수'입니다. 유형은 변수 설정에서
+              바꿉니다.
+            </p>
+          )}
+
+          {tab !== 'common' && ofType(tab).length === 0 && (
+            <p className="muted">{TYPE_LABELS[tab]} 변수가 없습니다.</p>
+          )}
+
+          {tab === 'continuous' && (
+            <div className="rule-rows">
+              {ofType('continuous')
+                .filter(matches)
+                .map((p) => {
+                  const range = getRange(form, 'numeric', p.column)
+                  const empty = !range.min.trim() && !range.max.trim()
+                  return (
+                    <div className="rule-row" key={p.column}>
+                      <span className="rule-name">{p.column}</span>
+                      <input
+                        className="narrow"
+                        inputMode="decimal"
+                        placeholder="최소"
+                        aria-label={`${p.column} 최소`}
+                        value={range.min}
+                        onChange={(e) => setForm(setRange(form, 'numeric', p.column, e.target.value, range.max))}
+                      />
+                      <span>~</span>
+                      <input
+                        className="narrow"
+                        inputMode="decimal"
+                        placeholder="최대"
+                        aria-label={`${p.column} 최대`}
+                        value={range.max}
+                        onChange={(e) => setForm(setRange(form, 'numeric', p.column, range.min, e.target.value))}
+                      />
+                      <Observed profile={p} />
+                      {empty && <span className="muted small">⚠ 검사 안 함</span>}
+                    </div>
+                  )
+                })}
+            </div>
+          )}
+
+          {tab === 'categorical' && (
+            <div className="rule-rows">
+              {ofType('categorical')
+                .filter(matches)
+                .map((p) => {
+                  const allowed = form.categorical.find((r) => r.column.trim() === p.column)?.allowed ?? []
+                  return (
+                    <div className="rule-row" key={p.column}>
+                      <span className="rule-name">
+                        {p.column}
+                        {!allowed.length && <span className="muted small"> ⚠ 검사 안 함</span>}
+                      </span>
+                      <AllowedValues
+                        values={allowed}
+                        observed={p.values}
+                        levels={dataFile.codebook?.[p.column]}
+                        onChange={(values) => setForm(setAllowed(form, p.column, values))}
+                      />
+                    </div>
+                  )
+                })}
+            </div>
+          )}
+
+          {tab === 'date' && (
+            <div className="rule-rows">
+              {ofType('date')
+                .filter(matches)
+                .map((p) => {
+                  const row = form.dates.find((r) => r.column.trim() === p.column)
+                  const limits = (min: string, max: string) => setForm(setDateRule(form, p.column, { min, max }))
+                  return (
+                    <div className="rule-row" key={p.column}>
+                      <span className="rule-name">{p.column}</span>
+                      <label className="inline">
+                        <input
+                          type="checkbox"
+                          checked={!!row}
+                          onChange={(e) =>
+                            setForm(setDateRule(form, p.column, e.target.checked ? { min: '', max: '' } : null))
+                          }
+                        />
+                        검사
+                      </label>
+                      <input
+                        type="date"
+                        aria-label={`${p.column} 시작일`}
+                        value={row?.min ?? ''}
+                        onChange={(e) => limits(e.target.value, row?.max ?? '')}
+                      />
+                      <span>~</span>
+                      <input
+                        type="date"
+                        aria-label={`${p.column} 종료일`}
+                        value={row?.max ?? ''}
+                        onChange={(e) => limits(row?.min ?? '', e.target.value)}
+                      />
+                      <Observed profile={p} />
+                      {!row && <span className="muted small">⚠ 검사 안 함</span>}
+                    </div>
+                  )
+                })}
+            </div>
+          )}
+
+          {tab === 'identifier' && (
+            <div className="rule-rows">
+              {ofType('identifier').length > 0 && (
+                <div className="chips">
+                  <span className="muted small">ID 변수:</span>
+                  {ofType('identifier').map((p) => (
+                    <button
+                      key={p.column}
+                      className={`chip ${form.id.column.trim() === p.column ? 'on' : ''}`}
+                      onClick={() =>
+                        update((f) => {
+                          f.id.column = p.column
+                          // 형식이 비어 있으면 데이터의 첫 ID로 형식을 만들어 둔다 (예: SUBJ-001 → ^SUBJ-\d{3}$)
+                          if (!f.id.pattern.trim() && p.examples?.[0]) f.id.pattern = patternFromExample(p.examples[0])
+                        })
+                      }
+                    >
+                      {p.column}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="rule-row">
+                <ColumnInput value={form.id.column} onChange={(v) => update((f) => void (f.id.column = v))} />
+                <input
+                  className="mono grow"
+                  placeholder="^SUBJ-\d{3}$"
+                  value={form.id.pattern}
+                  onChange={(e) => update((f) => void (f.id.pattern = e.target.value))}
+                />
+              </div>
+              <PatternTester
+                pattern={form.id.pattern}
+                examples={profiles.get(form.id.column)?.examples}
+                onPattern={(p) => update((f) => void (f.id.pattern = p))}
+              />
+            </div>
+          )}
+
+          {tab === 'common' && (
+            <>
+              <h3>중복 레코드</h3>
+              <p className="muted">
+                고른 컬럼의 값 조합이 같은 행이 두 번 이상 있으면 '오류'로 표시합니다. 보통 대상자 ID + 방문입니다.
+              </p>
+              <div className="chips">
+                {form.duplicateKeys.map((key, i) => (
+                  <span className="chip on" key={key}>
+                    {key}
+                    <button aria-label={`${key} 빼기`} onClick={() => update((f) => void f.duplicateKeys.splice(i, 1))}>
+                      ×
+                    </button>
+                  </span>
+                ))}
+                <AddColumn
+                  exclude={form.duplicateKeys}
+                  onAdd={(column) => update((f) => void f.duplicateKeys.push(column))}
+                />
+              </div>
+              <div className="section-header">
+                <h3>컬럼 간 조건</h3>
+                <button
+                  className="button button-ghost"
+                  onClick={() => update((f) => void f.cross.push({ left: '', op: '>', right: '', detail: '' }))}
+                >
+                  + 추가
+                </button>
+              </div>
+              <p className="muted">
+                한 행 안에서 두 값의 관계를 검사합니다. 오른쪽에는 컬럼 이름이나 숫자를 넣을 수 있습니다. 예: SBP &gt; DBP
+              </p>
+              <div className="rule-rows">
+                {form.cross.map((row, i) => (
+                  <div className="rule-row" key={i}>
+                    <ColumnInput value={row.left} onChange={(v) => update((f) => void (f.cross[i].left = v))} />
+                    <select
+                      className="narrow"
+                      value={row.op}
+                      onChange={(e) => update((f) => void (f.cross[i].op = e.target.value))}
+                    >
+                      {OPERATORS.map((op) => (
+                        <option key={op}>{op}</option>
+                      ))}
+                    </select>
+                    <ColumnInput
+                      value={row.right}
+                      placeholder="컬럼 또는 숫자"
+                      onChange={(v) => update((f) => void (f.cross[i].right = v))}
+                    />
+                    <input
+                      className="grow"
+                      placeholder="결과에 보일 설명 (선택)"
+                      value={row.detail}
+                      onChange={(e) => update((f) => void (f.cross[i].detail = e.target.value))}
+                    />
+                    <RemoveButton onClick={() => update((f) => void f.cross.splice(i, 1))} />
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </section>
+      ) : (
+        <>
+          <Section
+            title="숫자 범위"
+            help="값이 최소~최대를 벗어나면 '허용 범위 밖'으로, 숫자가 아니면 '숫자 변환 불가'로 표시합니다. 임상적으로 가능한 범위를 입력하세요."
+            onAdd={() => update((f) => void f.numeric.push({ column: '', min: '', max: '' }))}
+          >
+            {form.numeric.map((row, i) => (
+              <div className="rule-row" key={i}>
+                <ColumnInput value={row.column} onChange={(v) => update((f) => void (f.numeric[i].column = v))} />
+                <input
+                  className="narrow"
+                  inputMode="decimal"
+                  placeholder="최소"
+                  value={row.min}
+                  onChange={(e) => update((f) => void (f.numeric[i].min = e.target.value))}
+                />
+                <span>~</span>
+                <input
+                  className="narrow"
+                  inputMode="decimal"
+                  placeholder="최대"
+                  value={row.max}
+                  onChange={(e) => update((f) => void (f.numeric[i].max = e.target.value))}
+                />
+                <Observed profile={profiles.get(row.column)} />
+                <RemoveButton onClick={() => update((f) => void f.numeric.splice(i, 1))} />
+              </div>
+            ))}
+          </Section>
+
+          <Section
+            title="범주형 허용값"
+            help="허용값 외의 값은 '허용되지 않는 값'으로, 대소문자나 Male/Yes처럼 표기만 다른 값은 '표기 차이'로 표시합니다."
+            onAdd={() => update((f) => void f.categorical.push({ column: '', allowed: [] }))}
+          >
+            {form.categorical.map((row, i) => (
+              <div className="rule-row" key={i}>
+                <ColumnInput value={row.column} onChange={(v) => update((f) => void (f.categorical[i].column = v))} />
+                <AllowedValues
+                  values={row.allowed}
+                  observed={profiles.get(row.column)?.values}
+                  onChange={(values) => update((f) => void (f.categorical[i].allowed = values))}
+                />
+                <RemoveButton onClick={() => update((f) => void f.categorical.splice(i, 1))} />
+              </div>
+            ))}
+          </Section>
+
+          <Section title="대상자 ID 형식" help="ID가 형식(정규식)에 맞지 않으면 '오류'로 표시합니다. 예시 ID를 넣으면 형식을 자동으로 만들어 줍니다.">
+            <div className="rule-row">
+              <ColumnInput value={form.id.column} onChange={(v) => update((f) => void (f.id.column = v))} />
+              <input
+                className="mono grow"
+                placeholder="^SUBJ-\d{3}$"
+                value={form.id.pattern}
+                onChange={(e) => update((f) => void (f.id.pattern = e.target.value))}
+              />
+            </div>
+            <PatternTester
+              pattern={form.id.pattern}
+              examples={profiles.get(form.id.column)?.examples}
+              onPattern={(p) => update((f) => void (f.id.pattern = p))}
+            />
+          </Section>
+
+          <Section title="중복 레코드" help="고른 컬럼의 값 조합이 같은 행이 두 번 이상 있으면 '오류'로 표시합니다. 보통 대상자 ID + 방문입니다.">
+            <div className="chips">
+              {form.duplicateKeys.map((key, i) => (
+                <span className="chip on" key={key}>
+                  {key}
+                  <button aria-label={`${key} 빼기`} onClick={() => update((f) => void f.duplicateKeys.splice(i, 1))}>
+                    ×
+                  </button>
+                </span>
               ))}
-            </select>
-            <ColumnInput
-              value={row.right}
-              placeholder="컬럼 또는 숫자"
-              onChange={(v) => update((f) => void (f.cross[i].right = v))}
-            />
-            <input
-              className="grow"
-              placeholder="결과에 보일 설명 (선택)"
-              value={row.detail}
-              onChange={(e) => update((f) => void (f.cross[i].detail = e.target.value))}
-            />
-            <RemoveButton onClick={() => update((f) => void f.cross.splice(i, 1))} />
-          </div>
-        ))}
-      </Section>
+              <AddColumn
+                exclude={form.duplicateKeys}
+                onAdd={(column) => update((f) => void f.duplicateKeys.push(column))}
+              />
+            </div>
+          </Section>
+
+          <Section
+            title="날짜"
+            help="날짜로 읽을 수 없는 값은 '오류', 연구 기간 밖의 날짜는 '확인 필요'로 표시합니다. 기간은 비워 두면 형식만 검사합니다."
+            onAdd={() => update((f) => void f.dates.push({ column: '', min: '', max: '' }))}
+          >
+            {form.dates.map((row, i) => (
+              <div className="rule-row" key={i}>
+                <ColumnInput value={row.column} onChange={(v) => update((f) => void (f.dates[i].column = v))} />
+                <input type="date" value={row.min} onChange={(e) => update((f) => void (f.dates[i].min = e.target.value))} />
+                <span>~</span>
+                <input type="date" value={row.max} onChange={(e) => update((f) => void (f.dates[i].max = e.target.value))} />
+                <Observed profile={profiles.get(row.column)} />
+                <RemoveButton onClick={() => update((f) => void f.dates.splice(i, 1))} />
+              </div>
+            ))}
+          </Section>
+
+          <Section
+            title="컬럼 간 조건"
+            help="한 행 안에서 두 값의 관계를 검사합니다. 오른쪽에는 컬럼 이름이나 숫자를 넣을 수 있습니다. 예: SBP > DBP"
+            onAdd={() => update((f) => void f.cross.push({ left: '', op: '>', right: '', detail: '' }))}
+          >
+            {form.cross.map((row, i) => (
+              <div className="rule-row" key={i}>
+                <ColumnInput value={row.left} onChange={(v) => update((f) => void (f.cross[i].left = v))} />
+                <select
+                  className="narrow"
+                  value={row.op}
+                  onChange={(e) => update((f) => void (f.cross[i].op = e.target.value))}
+                >
+                  {OPERATORS.map((op) => (
+                    <option key={op}>{op}</option>
+                  ))}
+                </select>
+                <ColumnInput
+                  value={row.right}
+                  placeholder="컬럼 또는 숫자"
+                  onChange={(v) => update((f) => void (f.cross[i].right = v))}
+                />
+                <input
+                  className="grow"
+                  placeholder="결과에 보일 설명 (선택)"
+                  value={row.detail}
+                  onChange={(e) => update((f) => void (f.cross[i].detail = e.target.value))}
+                />
+                <RemoveButton onClick={() => update((f) => void f.cross.splice(i, 1))} />
+              </div>
+            ))}
+          </Section>
+        </>
+      )}
 
       <details className="card">
         <summary>규칙 JSON 미리 보기</summary>

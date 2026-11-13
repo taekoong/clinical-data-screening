@@ -3,7 +3,12 @@ import type { DataFile, RulesDraft } from "../App";
 import DataFilePicker from "../components/DataFilePicker";
 import type { ScreeningEngine } from "../engine/engine";
 import { getRange, setRange, type RulesForm } from "../rulesForm";
-import type { CodeLevel, ColumnProfile, VariableType, Codebook } from "../types";
+import type {
+  CodeLevel,
+  ColumnProfile,
+  VariableType,
+  Codebook,
+} from "../types";
 import ValueText from "../components/ValueText";
 import { analysisFileName, downloadBlob, errorText, fileStem } from "../files";
 import {
@@ -174,7 +179,9 @@ function Setup({
   async function resetCodes() {
     if (
       dataFile.editedCells &&
-      !confirm("코드를 다시 적용하면 스크리닝에서 고친 값이 사라집니다. 계속할까요?")
+      !confirm(
+        "코드를 다시 적용하면 스크리닝에서 고친 값이 사라집니다. 계속할까요?",
+      )
     )
       return;
     setExporting(true);
@@ -257,7 +264,7 @@ function Setup({
                 disabled={exporting}
                 onClick={resetCodes}
               >
-                코드 다시 정하기
+                변수 규칙 수정
               </button>
               <button className="button button-primary" onClick={onNext}>
                 다음: 규칙 편집 →
@@ -399,26 +406,6 @@ function Setup({
               )}
             </>
           )}
-        </div>
-      </div>
-
-      <div className="section-header">
-        <h2>3. 분석용 파일 내려받기</h2>
-        <div className="toolbar">
-          <button
-            className="button"
-            disabled={!canExport || exporting}
-            onClick={() => download("excel")}
-          >
-            분석용 엑셀
-          </button>
-          <button
-            className="button"
-            disabled={!canExport || exporting}
-            onClick={() => download("r")}
-          >
-            R 라벨 코드
-          </button>
         </div>
       </div>
       <p className="muted small">

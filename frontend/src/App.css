@@ -1006,3 +1006,10 @@ table.variable-list tr.active td:first-child {
   font-weight: 600;
   margin-bottom: 8px;
 }
+
+/* 규칙 편집 유형별 탭 */
+.rule-name {
+  width: 160px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}

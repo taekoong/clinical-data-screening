@@ -26,14 +26,15 @@ function toNumber(text: string): number | null {
 export function formToRules(form: RulesForm): Rules {
   const rules: Rules = {}
 
-  const numeric = form.numeric.filter((r) => r.column.trim())
+  // 최소·최대를 모두 비운 숫자 범위와 허용값이 없는 범주는 '검사 안 함'으로 본다
+  const numeric = form.numeric.filter((r) => r.column.trim() && (r.min.trim() || r.max.trim()))
   if (numeric.length) {
     rules.numeric_columns = Object.fromEntries(
       numeric.map((r) => [r.column.trim(), { min: toNumber(r.min), max: toNumber(r.max) }]),
     )
   }
 
-  const categorical = form.categorical.filter((r) => r.column.trim())
+  const categorical = form.categorical.filter((r) => r.column.trim() && r.allowed.length)
   if (categorical.length) {
     rules.categorical_columns = Object.fromEntries(categorical.map((r) => [r.column.trim(), r.allowed]))
   }
@@ -202,4 +203,30 @@ export function setRange(form: RulesForm, kind: RangeKind, column: string, min: 
   else if (empty) next = rows.filter((_, i) => i !== index)
   else next = rows.map((r, i) => (i === index ? { ...r, min, max } : r))
   return { ...form, [kind]: next }
+}
+
+// [규칙 편집] 유형별 탭에서 범주 하나의 허용값을 고친다. 허용값을 모두 빼면 그 규칙을 지운다
+export function setAllowed(form: RulesForm, column: string, allowed: string[]): RulesForm {
+  const rows = form.categorical
+  const index = rows.findIndex((r) => r.column.trim() === column)
+  let next: RulesForm['categorical']
+  if (!allowed.length) next = rows.filter((_, i) => i !== index)
+  else if (index < 0) next = [...rows, { column, allowed }]
+  else next = rows.map((r, i) => (i === index ? { ...r, allowed } : r))
+  return { ...form, categorical: next }
+}
+
+// 날짜 규칙은 기간을 비워도 형식 검사를 하므로, 기간과 별개로 규칙을 켜고 끈다 (null이면 끈다)
+export function setDateRule(
+  form: RulesForm,
+  column: string,
+  limits: { min: string; max: string } | null,
+): RulesForm {
+  const rows = form.dates
+  const index = rows.findIndex((r) => r.column.trim() === column)
+  let next: RulesForm['dates']
+  if (!limits) next = rows.filter((_, i) => i !== index)
+  else if (index < 0) next = [...rows, { column, ...limits }]
+  else next = rows.map((r, i) => (i === index ? { ...r, ...limits } : r))
+  return { ...form, dates: next }
 }
