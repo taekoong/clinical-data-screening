@@ -572,9 +572,84 @@ function Variables({
       </section>
 
       <section className="card">
-        <div className="results-header">
-          <h2>2. 다운로드</h2>
-          <div className="toolbar">
+        <h2>2. 다운로드</h2>
+        <p className="muted">
+          체크한 {selected.size}개 변수가 들어갑니다
+          {waiting > 0 && computing ? ` (${waiting}개 계산 중…)` : ""}. 결측과
+          숫자가 아닌 값은 계산에서 빠집니다.
+        </p>
+
+        {/* 최종 결과물 두 개를 위에 묶고, 받을 파일 이름과 내용을 함께 보여 준다 */}
+        <h3 className="download-title">
+          최종 결과물{" "}
+          <span className="muted small">
+            두 파일을 같은 폴더에 두고 R에서 실행하세요. 엑셀 이름을 바꾸거나
+            옮기면 R 코드가 파일을 찾지 못합니다.
+          </span>
+        </h3>
+        <div className="download-cards">
+          <div className="download-card">
+            <strong>분석용 데이터 (엑셀)</strong>
+            <span className="muted small">
+              {dataFile.codebook
+                ? "원본 시트 + Analysis_Data(구간 열 포함) + Codebook + 요약 시트"
+                : `${dataFile.info.sheet} 시트에 구간 열 추가 + 요약 시트 (구간이 있으면 Codebook도)`}
+            </span>
+            <span className="mono small">{dataFileName}</span>
+            <button
+              className="button button-primary"
+              onClick={() => download(true)}
+              disabled={!canExport || check.errors.length > 0}
+            >
+              ⬇ 분석용 데이터 받기
+            </button>
+          </div>
+          <div className="download-card">
+            <strong>R 라벨 코드</strong>
+            <span className="muted small">
+              {Object.keys(rCodebook).length
+                ? "위 엑셀을 읽어 범주 코드와 구간에 라벨을 붙입니다"
+                : "라벨과 구간 설정이 없으면 만들지 않습니다."}
+            </span>
+            <span className="mono small">{stem}_load_data.R</span>
+            <button
+              className="button button-primary"
+              onClick={downloadRScript}
+              disabled={
+                !canExport ||
+                check.errors.length > 0 ||
+                Object.keys(rCodebook).length === 0
+              }
+            >
+              ⬇ R 코드 받기
+            </button>
+          </div>
+        </div>
+
+        <div className="picker">
+          <span className="muted">요약표만 필요할 때</span>
+          <button
+            className="button"
+            onClick={() => download(false)}
+            disabled={!canExport}
+          >
+            요약표만 받기
+          </button>
+          <span className="muted small">
+            데이터 없이 기술통계·빈도표만 · {stem}_summary.xlsx
+          </span>
+        </div>
+
+        <details className="small">
+          <summary className="muted">변수 유형·구간 설정 저장/불러오기</summary>
+          <div className="picker settings-row">
+            <button
+              className="button button-ghost"
+              onClick={saveSettings}
+              disabled={!canExport || check.errors.length > 0}
+            >
+              설정 저장
+            </button>
             <label className="button button-ghost">
               설정 불러오기
               <input
@@ -587,48 +662,14 @@ function Variables({
                 }}
               />
             </label>
-            <button
-              className="button button-ghost"
-              onClick={saveSettings}
-              disabled={!canExport || check.errors.length > 0}
-            >
-              설정 저장
-            </button>
-            <button
-              className="button"
-              onClick={() => download(false)}
-              disabled={!canExport}
-            >
-              요약표만 다운로드
-            </button>
-            <button
-              className="button button-primary"
-              onClick={() => download(true)}
-              disabled={!canExport || check.errors.length > 0}
-            >
-              데이터와 요약 다운로드
-            </button>
-            <button
-              className="button"
-              onClick={downloadRScript}
-              disabled={
-                !canExport ||
-                check.errors.length > 0 ||
-                Object.keys(rCodebook).length === 0
-              }
-            >
-              R 라벨 코드
-            </button>
+            <span className="muted">
+              같은 양식의 다른 파일에 변수 유형과 구간 기준값을 다시 쓸 때
+              사용합니다 ({stem}_variables.json). 범주 코드·라벨은 엑셀의
+              Codebook 시트에 들어 있고 여기서는 저장하지 않습니다.
+            </span>
           </div>
-        </div>
-        <p className="muted">
-          체크한 {selected.size}개 변수가 들어갑니다
-          {waiting > 0 && computing ? ` (${waiting}개 계산 중…)` : ""}. [데이터와
-          요약 다운로드]는 지금 데이터 파일의 {dataFile.info.sheet} 시트에 구간
-          컬럼을 붙이고 Codebook·요약 시트를 더합니다. R 라벨 코드에는 변수
-          설정의 코드와 구간 라벨이 들어가니, 데이터 파일과 같은 폴더에서
-          실행하세요. 결측과 숫자가 아닌 값은 계산에서 빠집니다.
-        </p>
+        </details>
+
         {notice && <p className="message message-ok">{notice}</p>}
         {check.errors.length > 0 && (
           <div className="message message-error">

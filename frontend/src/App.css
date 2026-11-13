@@ -993,3 +993,33 @@ table.variable-list tr.active td:first-child {
   font-weight: 600;
   overflow-wrap: anywhere;
 }
+
+/* 요약·코딩 다운로드: 최종 결과물 두 개를 카드로 묶는다 */
+.download-title {
+  margin: 4px 0 0;
+}
+
+.download-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.download-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.download-card .button {
+  margin-top: 4px;
+}
+
+.settings-row {
+  margin-top: 8px;
+}
