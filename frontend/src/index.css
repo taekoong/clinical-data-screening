@@ -10,8 +10,6 @@
   --error-soft: #fdecea;
   --review: #a15c00;
   --review-soft: #fff4e0;
-  --info: #4a5568;
-  --info-soft: #eef0f3;
   --ok: #1f7a3f;
   --ok-soft: #e7f5ec;
 
@@ -38,8 +36,6 @@
     --error-soft: #3a1e1a;
     --review: #f0b45a;
     --review-soft: #3a2c14;
-    --info: #b4bccb;
-    --info-soft: #262b35;
     --ok: #6fd394;
     --ok-soft: #173024;
     color-scheme: dark;

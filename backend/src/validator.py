@@ -63,7 +63,7 @@ def add_issue(
         "Issue_Type": code,
         "Severity": severity,
         "Description": detail,
-        "Action": "연구자 확인 필요" if severity != "INFO" else "정보 확인",
+        "Action": "연구자 확인 필요",
     })
 
 

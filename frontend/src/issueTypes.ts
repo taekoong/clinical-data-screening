@@ -17,7 +17,6 @@ export const ISSUE_LABELS: Record<string, string> = {
 export const SEVERITY_LABELS = {
   ERROR: "오류",
   REVIEW: "확인 필요",
-  INFO: "정보",
 } as const;
 
 export const issueLabel = (code: string) => ISSUE_LABELS[code] ?? code;

@@ -295,12 +295,6 @@ details summary {
   color: var(--review);
 }
 
-.chip-INFO.on {
-  background: var(--info-soft);
-  border-color: var(--info);
-  color: var(--info);
-}
-
 .suggestions .chip {
   border-style: dashed;
 }
@@ -337,10 +331,6 @@ details summary {
 
 .stat-REVIEW .stat-value {
   color: var(--review);
-}
-
-.stat-INFO .stat-value {
-  color: var(--info);
 }
 
 /* 결과 표 */
@@ -395,11 +385,6 @@ td.value {
 .severity-REVIEW {
   background: var(--review-soft);
   color: var(--review);
-}
-
-.severity-INFO {
-  background: var(--info-soft);
-  color: var(--info);
 }
 
 @media (max-width: 640px) {
@@ -625,11 +610,6 @@ table.grid td.cell-ERROR,
 table.grid td.cell-REVIEW,
 .swatch.cell-REVIEW {
   background: var(--review-soft);
-}
-
-table.grid td.cell-INFO,
-.swatch.cell-INFO {
-  background: var(--info-soft);
 }
 
 table.grid td.cell-edited,

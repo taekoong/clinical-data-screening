@@ -1,6 +1,6 @@
-export type Severity = "ERROR" | "REVIEW" | "INFO";
+export type Severity = "ERROR" | "REVIEW";
 
-export const SEVERITIES: Severity[] = ["ERROR", "REVIEW", "INFO"];
+export const SEVERITIES: Severity[] = ["ERROR", "REVIEW"];
 
 export interface Issue {
   Sheet: string;
@@ -142,7 +142,12 @@ export interface ContinuousStats extends VariableBase {
 export interface CategoricalStats extends VariableBase {
   type: "categorical";
   // label: 코드를 적용한 변수의 라벨 (코드북에 없는 값은 null)
-  levels: { value: string; count: number; percent: number; label?: string | null }[];
+  levels: {
+    value: string;
+    count: number;
+    percent: number;
+    label?: string | null;
+  }[];
 }
 
 export interface DateStats extends VariableBase {

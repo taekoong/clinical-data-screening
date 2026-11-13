@@ -25,7 +25,7 @@ def build_summary(df, issues, rules):
         "total_rows": int(len(df)),
         "total_columns": int(len(df.columns)),
         "issue_count": int(len(issues)),
-        "by_severity": {level: int(by_severity.get(level, 0)) for level in ("ERROR", "REVIEW", "INFO")},
+        "by_severity": {level: int(by_severity.get(level, 0)) for level in ("ERROR", "REVIEW")},
         "rules_applied": bool(rules),
     }
 

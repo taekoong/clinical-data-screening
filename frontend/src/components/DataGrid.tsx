@@ -20,7 +20,6 @@ const OVERSCAN = 10;
 const SEVERITY_RANK: Record<Severity, number> = {
   ERROR: 0,
   REVIEW: 1,
-  INFO: 2,
 };
 
 interface Draft {
@@ -77,9 +76,8 @@ export default function DataGrid({
 
   const issueCells = useMemo(
     () =>
-      [...issuesByCell.entries()]
-        .filter(([, list]) => list.some((i) => i.Severity !== "INFO"))
-        .map(([cell]) => parseCell(cell))
+      [...issuesByCell.keys()]
+        .map((cell) => parseCell(cell))
         .sort((a, b) => a.row - b.row || a.col - b.col),
     [issuesByCell],
   );
@@ -558,7 +556,6 @@ export default function DataGrid({
       <p className="muted small legend">
         <span className="swatch cell-ERROR" /> 오류{" "}
         <span className="swatch cell-REVIEW" /> 확인 필요{" "}
-        <span className="swatch cell-INFO" /> 정보{" "}
         <span className="swatch cell-edited" /> 고친 셀
       </p>
     </div>

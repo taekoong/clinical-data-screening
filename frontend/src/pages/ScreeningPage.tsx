@@ -329,7 +329,7 @@ function Results({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const order = { ERROR: 0, REVIEW: 1, INFO: 2 };
+    const order = { ERROR: 0, REVIEW: 1 };
     return result.issues
       .filter((i) => severities.has(i.Severity))
       .filter((i) => !issueType || i.Issue_Type === issueType)

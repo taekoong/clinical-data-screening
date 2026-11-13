@@ -8,18 +8,15 @@ from screening import RulesError, run_screening
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 
-SEVERITY_ORDER = {"ERROR": 0, "REVIEW": 1, "INFO": 2}
+SEVERITY_ORDER = {"ERROR": 0, "REVIEW": 1}
 
 
-def print_issues(issues, show_info=False, limit=50):
+def print_issues(issues, limit=50):
     if issues.empty:
         print("발견된 문제가 없습니다.")
         return
 
-    targets = issues if show_info else issues[issues["Severity"] != "INFO"]
-    hidden_info = len(issues) - len(targets)
-
-    targets = targets.sort_values(
+    targets = issues.sort_values(
         by=["Severity", "Excel_Row"],
         key=lambda s: s.map(SEVERITY_ORDER) if s.name == "Severity" else s
     )
@@ -35,15 +32,11 @@ def print_issues(issues, show_info=False, limit=50):
     if len(targets) > limit:
         print(f"... 외 {len(targets) - limit}건은 결과 파일에서 확인하세요.")
 
-    if hidden_info:
-        print(f"(INFO {hidden_info}건 생략, --show-info 옵션으로 표시)")
-
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("input_file")
     parser.add_argument("--rules", default=None)
-    parser.add_argument("--show-info", action="store_true", help="INFO 등급(결측값 등)도 출력")
     parser.add_argument("--limit", type=int, default=50, help="터미널에 출력할 최대 건수")
     parser.add_argument("--sheet", default=None, help="검사할 시트 이름 (기본: 첫 번째 시트)")
     args = parser.parse_args()
@@ -77,7 +70,7 @@ def main():
         print(f"[경고] {warning}")
 
     issues = result["issues"]
-    print_issues(issues, show_info=args.show_info, limit=args.limit)
+    print_issues(issues, limit=args.limit)
     print()
     print(f"스크리닝 완료: {len(issues)}건")
     print(f"결과 파일: {output_file}")
