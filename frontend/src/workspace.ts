@@ -12,6 +12,7 @@ export interface Workspace {
   screening?: {
     fileKey: string;
     edits: Record<string, string>;
+    reasons?: Record<string, string>;
     ran: boolean;
     useRules: boolean;
   };

@@ -38,7 +38,7 @@ def test_preview_and_apply_exact_matches_preserve_other_values_and_history():
     assert book["Data"]["B2"].number_format == "@"
     log = list(book["Change_Log"].values)
     assert len(log) == 3
-    assert log[1] == ("2026-10-23 15:00:00", "Data", "B2", "Sex", "f", "F", "CATEGORY_RECODE")
+    assert log[1][:7] == ("2026-10-23 15:00:00", "Data", "B2", "Sex", "f", "F", "CATEGORY_RECODE")
     second = preview_recode(edited, "Data", "Sex", "Male", "M")
     again = load_workbook(BytesIO(apply_edits(edited, "Data", second["edits"])))
     assert again["Data"]["B4"].value == "M"

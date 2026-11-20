@@ -174,6 +174,8 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
           request.sheet,
           JSON.stringify(request.edits),
           request.changedAt,
+          request.changedBy,
+          request.fileName,
         );
         post({ type: "result", id: request.id, value: edited }, [
           edited.buffer as ArrayBuffer,

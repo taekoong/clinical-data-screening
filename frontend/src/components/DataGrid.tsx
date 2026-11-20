@@ -6,7 +6,12 @@ import {
   useState,
   type KeyboardEvent,
 } from "react";
-import { isNumericIssue, issueLabel, SEVERITY_LABELS } from "../issueTypes";
+import {
+  isNumericIssue,
+  issueLabel,
+  REASON_PRESETS,
+  SEVERITY_LABELS,
+} from "../issueTypes";
 import ValueText from "./ValueText";
 import { cellAddress, columnLetter, parseCell, type CellPos } from "../cells";
 import type { Codebook, Issue, Severity, SheetTable } from "../types";
@@ -36,6 +41,9 @@ interface Props {
   onSelect: (pos: CellPos) => void;
   onEdit: (cell: string, value: string, original: string) => void;
   onBulkChange?: (column: string, source: string) => void;
+  // 셀 주소 → 수정 사유
+  reasons: Record<string, string>;
+  onReason: (cell: string, reason: string) => void;
   // 코드를 적용한 파일의 코드북. 있으면 셀 값 옆에 라벨을 보여 준다
   codebook?: Codebook;
 }
@@ -49,6 +57,8 @@ export default function DataGrid({
   onSelect,
   onEdit,
   onBulkChange,
+  reasons,
+  onReason,
   codebook,
 }: Props) {
   const [onlyIssueRows, setOnlyIssueRows] = useState(false);
@@ -290,7 +300,9 @@ export default function DataGrid({
             if (selected) onBulkChange?.(table.columns[selected.col], original);
           }}
         >
-          {selected ? `${table.columns[selected.col]} 값 일괄 변경` : "값 일괄 변경"}
+          {selected
+            ? `${table.columns[selected.col]} 값 일괄 변경`
+            : "값 일괄 변경"}
         </button>
         <button
           className="button button-ghost"
@@ -408,6 +420,35 @@ export default function DataGrid({
         </p>
       )}
 
+      {/* 고친 셀이면 사유를 적을 수 있다 (비워 두면 사유 없음) */}
+      {changed && (
+        <div className="reason-bar">
+          <label className="inline grow">
+            <span className="muted small">메모</span>
+            <input
+              className="grow"
+              placeholder="고친 이유, 메모 등"
+              aria-label={`${address} 수정 사유`}
+              disabled={disabled}
+              value={reasons[address] ?? ""}
+              onChange={(e) => onReason(address, e.target.value)}
+            />
+          </label>
+          <div className="chips">
+            {REASON_PRESETS.map((reason) => (
+              <button
+                key={reason}
+                className={`chip ${reasons[address] === reason ? "on" : ""}`}
+                disabled={disabled}
+                onClick={() => onReason(address, reason)}
+              >
+                {reason}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {selected && codebook?.[table.columns[selected.col]] && (
         <p className="small">
           <strong>{table.columns[selected.col]} 코드:</strong>{" "}
@@ -472,7 +513,8 @@ export default function DataGrid({
                     onClick={() => select({ row: rowIndices[0] ?? 0, col })}
                     onKeyDown={(e) => e.stopPropagation()}
                   >
-                    <span className="col-letter">{columnLetter(col)}</span> {name}
+                    <span className="col-letter">{columnLetter(col)}</span>{" "}
+                    {name}
                   </button>
                 </th>
               ))}

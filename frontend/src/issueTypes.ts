@@ -25,3 +25,6 @@ export const issueLabel = (code: string) => ISSUE_LABELS[code] ?? code;
 const NUMERIC_ISSUES = new Set(["SUSPECTED_TYPO", "INVALID_NUMERIC_VALUE"]);
 
 export const isNumericIssue = (code: string) => NUMERIC_ISSUES.has(code);
+
+// 셀을 고칠 때 눌러서 넣는 자주 쓰는 수정 사유
+export const REASON_PRESETS = ["오타 수정", "원자료(CRF) 확인", "단위 변환", "연구자 확인"];

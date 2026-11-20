@@ -894,11 +894,16 @@ table.variable-list tbody tr:hover td {
 
 table.variable-list tr.active td {
   background: var(--accent-soft);
-  box-shadow: inset 0 -1px 0 var(--accent), inset 0 1px 0 var(--accent);
+  box-shadow:
+    inset 0 -1px 0 var(--accent),
+    inset 0 1px 0 var(--accent);
 }
 
 table.variable-list tr.active td:first-child {
-  box-shadow: inset 3px 0 0 var(--accent), inset 0 -1px 0 var(--accent), inset 0 1px 0 var(--accent);
+  box-shadow:
+    inset 3px 0 0 var(--accent),
+    inset 0 -1px 0 var(--accent),
+    inset 0 1px 0 var(--accent);
 }
 
 .row-button {
@@ -1034,4 +1039,27 @@ table.variable-list tr.active td:first-child {
 
 .resume-notice strong {
   color: var(--accent);
+}
+
+/* 작업자 이름과 수정 사유 */
+.header-side {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.worker-field input {
+  width: 120px;
+}
+
+.reason-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.reason-input {
+  width: 160px;
 }

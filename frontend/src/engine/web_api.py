@@ -50,8 +50,10 @@ def api_last_report():
     return to_js(_last_report)
 
 
-def api_apply_edits(data, sheet, edits_json, changed_at):
-    return to_js(apply_edits(bytes(data.to_py()), sheet, json.loads(edits_json), changed_at))
+def api_apply_edits(data, sheet, edits_json, changed_at, changed_by, file_name):
+    return to_js(apply_edits(
+        bytes(data.to_py()), sheet, json.loads(edits_json), changed_at, changed_by, file_name,
+    ))
 
 
 def api_describe(data, sheet, variables_json, rules_json, exclude_out_of_range):

@@ -41,6 +41,24 @@ const TABS: Tab[] = ["setup", "rules", "screening", "summary"];
 const isTab = (value: unknown): value is Tab => TABS.includes(value as Tab);
 
 const DRAFT_KEY = "clinical-screening:rules-draft";
+const WORKER_KEY = "clinical-screening:worker";
+
+// 작업자 이름은 이 브라우저에 한 번 저장해 두고 Change_Log에 남긴다 (로그인이 없으므로)
+function loadWorker() {
+  try {
+    return localStorage.getItem(WORKER_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function saveWorker(name: string) {
+  try {
+    localStorage.setItem(WORKER_KEY, name);
+  } catch {
+    // 저장소를 쓸 수 없으면 이번 화면에서만 쓴다
+  }
+}
 
 function loadDraft(): RulesDraft {
   try {
@@ -94,6 +112,7 @@ function Workbench({ initial }: { initial: Workspace }) {
   const [dataFile, setDataFile] = useState<DataFile | null>(initial.dataFile);
   const [draft, setDraft] = useState<RulesDraft>(loadDraft);
   const [autoSave, setAutoSave] = useState<AutoSave>(null);
+  const [worker, setWorker] = useState(loadWorker);
   const [resumed, setResumed] = useState(Boolean(initial.dataFile));
   // [새로 시작]하면 모든 화면을 처음 상태로 다시 연다
   const [session, setSession] = useState(0);
@@ -137,7 +156,21 @@ function Workbench({ initial }: { initial: Workspace }) {
             않습니다.
           </p>
         </div>
-        <EngineBadge status={status} />
+        <div className="header-side">
+          <label className="inline small worker-field">
+            작업자
+            <input
+              value={worker}
+              placeholder="이름"
+              aria-label="작업자 이름"
+              onChange={(e) => {
+                setWorker(e.target.value);
+                saveWorker(e.target.value);
+              }}
+            />
+          </label>
+          <EngineBadge status={status} />
+        </div>
       </header>
 
       {resumed && dataFile && (
@@ -215,6 +248,7 @@ function Workbench({ initial }: { initial: Workspace }) {
             draft={draft}
             onDraft={updateDraft}
             onEditRules={() => setTab("rules")}
+            worker={worker}
           />
         </div>
         <div hidden={tab !== "rules"}>

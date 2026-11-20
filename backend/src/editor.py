@@ -6,7 +6,8 @@ import pandas as pd
 from openpyxl import load_workbook
 
 LOG_SHEET = "Change_Log"
-LOG_HEADER = ["Changed_At", "Sheet", "Cell", "Column", "Before", "After", "Issue_Type"]
+# 누가(Changed_By), 어느 파일에서(File), 왜(Reason) 고쳤는지까지 남긴다. 사유를 비워 두면 빈칸
+LOG_HEADER = ["Changed_At", "Sheet", "Cell", "Column", "Before", "After", "Issue_Type", "Changed_By", "File", "Reason"]
 
 # 앞자리 0이 있는 값(예: 001)은 ID일 수 있으므로 숫자로 바꾸지 않는다
 PLAIN_NUMBER = re.compile(r"^-?(0|[1-9]\d*)(\.\d+)?$")
@@ -64,7 +65,7 @@ def preview_recode(file_bytes, sheet, column, source, target):
 
 
 # 원본 엑셀의 셀 값을 고치고, 고친 내역을 Change_Log 시트에 남긴다 (서식과 다른 시트는 그대로 유지)
-def apply_edits(file_bytes, sheet, edits, changed_at=None):
+def apply_edits(file_bytes, sheet, edits, changed_at=None, changed_by="", file_name=""):
     book = load_workbook(BytesIO(file_bytes))
 
     if sheet not in book.sheetnames:
@@ -75,6 +76,10 @@ def apply_edits(file_bytes, sheet, edits, changed_at=None):
 
     if LOG_SHEET in book.sheetnames:
         log = book[LOG_SHEET]
+        # 열이 적은 예전 기록이면 새 열의 머리글만 뒤에 덧붙인다 (예전 줄은 빈칸)
+        for col, name in enumerate(LOG_HEADER, start=1):
+            if log.cell(row=1, column=col).value is None:
+                log.cell(row=1, column=col, value=name)
     else:
         log = book.create_sheet(LOG_SHEET)
         log.append(LOG_HEADER)
@@ -100,6 +105,9 @@ def apply_edits(file_bytes, sheet, edits, changed_at=None):
             display(before),
             display(cell.value),
             edit.get("issue", ""),
+            changed_by,
+            file_name,
+            edit.get("reason", "").strip(),
         ])
         if edit.get("as_text"):
             for log_cell in log[log.max_row]:

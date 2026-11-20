@@ -633,7 +633,7 @@ function Variables({
             <strong>R 라벨 코드</strong>
             <span className="muted small">
               {Object.keys(rCodebook).length
-                ? "위 엑셀을 읽어 범주 코드와 구간에 라벨을 붙입니다"
+                ? "자료 기반으로 라벨/구간 정의 부분을 R언어로 작성한 코드입니다."
                 : "라벨과 구간 설정이 없으면 만들지 않습니다."}
             </span>
             <span className="mono small">{stem}_load_data.R</span>

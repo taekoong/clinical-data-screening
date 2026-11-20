@@ -93,7 +93,7 @@ def test_edits_fix_issues_and_are_logged(rules):
     assert book["Raw_Data"]["C20"].value == "2026-10-01"
 
     log = [list(row) for row in book[LOG_SHEET].iter_rows(min_row=2, values_only=True)]
-    assert log[0] == ["2026-10-23 10:00:00", "Raw_Data", "G5", "Height_cm", "17O", "170", "SUSPECTED_TYPO"]
+    assert log[0][:7] == ["2026-10-23 10:00:00", "Raw_Data", "G5", "Height_cm", "17O", "170", "SUSPECTED_TYPO"]
     assert [row[2] for row in log] == ["G5", "H4", "C20"]
 
 
@@ -150,3 +150,32 @@ def test_allow_missing_skips_blank_cells(rules):
 
 def test_allow_missing_must_be_column_list():
     assert any("allow_missing" in e for e in validate_rules({"allow_missing": "Heart_Rate"}))
+
+
+def test_log_records_who_which_file_and_why():
+    edits = [
+        {"cell": "G5", "value": "170", "issue": "SUSPECTED_TYPO", "reason": " 원자료(CRF) 확인 "},
+        {"cell": "H4", "value": "72.5", "issue": "EXTRA_WHITESPACE"},
+    ]
+    edited = apply_edits(TEST_FILE.read_bytes(), "Raw_Data", edits, "2026-11-20 14:00:00", "이태경", "test_all_checks.xlsx")
+
+    rows = list(load_workbook(BytesIO(edited))[LOG_SHEET].values)
+    assert rows[0][-3:] == ("Changed_By", "File", "Reason")
+    assert rows[1][-3:] == ("이태경", "test_all_checks.xlsx", "원자료(CRF) 확인")
+    # 사유를 비워 두면 빈칸
+    assert rows[2][-1] in (None, "")
+
+
+def test_old_log_gets_new_columns_added():
+    book = load_workbook(BytesIO(TEST_FILE.read_bytes()))
+    old = book.create_sheet(LOG_SHEET)
+    old.append(["Changed_At", "Sheet", "Cell", "Column", "Before", "After", "Issue_Type"])
+    old.append(["2026-10-01 09:00:00", "Raw_Data", "H4", "Weight_kg", " 72.5", "72.5", "EXTRA_WHITESPACE"])
+    buffer = BytesIO()
+    book.save(buffer)
+
+    edited = apply_edits(buffer.getvalue(), "Raw_Data", [{"cell": "G5", "value": "170", "reason": "오타"}], None, "홍길동", "a.xlsx")
+    rows = list(load_workbook(BytesIO(edited))[LOG_SHEET].values)
+    assert rows[0][-3:] == ("Changed_By", "File", "Reason")
+    assert rows[1][7:] == (None, None, None)
+    assert rows[2][-3:] == ("홍길동", "a.xlsx", "오타")

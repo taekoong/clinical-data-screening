@@ -11,6 +11,11 @@ import type {
 } from "../types";
 import type { WorkerRequest, WorkerResponse } from "./protocol";
 
+export interface EditAuthor {
+  changedBy: string;
+  fileName: string;
+}
+
 // 화면은 이 인터페이스만 사용한다. 나중에 NAS 서버(API) 방식으로 바꾸면 구현만 교체하면 된다.
 export interface ScreeningEngine {
   previewRecode(
@@ -51,6 +56,8 @@ export interface ScreeningEngine {
     data: ArrayBuffer,
     sheet: string,
     edits: CellEdit[],
+    // Change_Log에 남길 작업자 이름과 수정할 때 열려 있던 파일 이름
+    author: EditAuthor,
   ): Promise<ArrayBuffer>;
   // ScreeningEngine 인터페이스
   exportAnalysis(
@@ -183,13 +190,15 @@ export function createPyodideEngine(
     validateRules: (rules) => request({ type: "validateRules", rules }),
     screen: (data, rules, sheet) =>
       request({ type: "screen", data: copy(data), rules, sheet }),
-    applyEdits: async (data, sheet, edits) => {
+    applyEdits: async (data, sheet, edits, author) => {
       const edited = await request<Uint8Array>({
         type: "applyEdits",
         data: copy(data),
         sheet,
         edits,
         changedAt: localTimestamp(new Date()),
+        changedBy: author.changedBy,
+        fileName: author.fileName,
       });
       return toArrayBuffer(edited);
     },

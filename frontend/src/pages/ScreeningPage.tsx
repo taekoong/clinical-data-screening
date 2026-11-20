@@ -8,7 +8,12 @@ import RulesFileButton from "../components/RulesFileButton";
 import RecodePanel from "../components/RecodePanel";
 import type { ScreeningEngine } from "../engine/engine";
 import { analysisFileName, downloadBlob, errorText, fileStem } from "../files";
-import { isNumericIssue, issueLabel, SEVERITY_LABELS } from "../issueTypes";
+import {
+  isNumericIssue,
+  issueLabel,
+  REASON_PRESETS,
+  SEVERITY_LABELS,
+} from "../issueTypes";
 import { formErrors, formToRules } from "../rulesForm";
 import { codeLabel } from "../variablesPlan";
 import { saveWorkspace, savedWorkspace, screeningKey } from "../workspace";
@@ -32,6 +37,8 @@ interface Props {
   draft: RulesDraft;
   onDraft: (draft: RulesDraft) => void;
   onEditRules: () => void;
+  // Change_Log에 남길 작업자 이름
+  worker: string;
 }
 
 interface Run {
@@ -50,6 +57,7 @@ export default function ScreeningPage({
   draft,
   onDraft,
   onEditRules,
+  worker,
 }: Props) {
   // 새로고침 전에 고치던 값 (같은 파일일 때만 이어서 쓴다)
   const [restored] = useState(() => {
@@ -63,6 +71,8 @@ export default function ScreeningPage({
   const [run, setRun] = useState<Run | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [edits, setEdits] = useState<Edits>(restored?.edits ?? {});
+  // 셀 주소 → 수정 사유
+  const [reasons, setReasons] = useState<Edits>(restored?.reasons ?? {});
   const [applying, setApplying] = useState(false);
   const [editError, setEditError] = useState("");
   const [unsaved, setUnsaved] = useState(false);
@@ -76,10 +86,16 @@ export default function ScreeningPage({
     const file = run?.file ?? dataFile;
     saveWorkspace({
       screening: file
-        ? { fileKey: screeningKey(file), edits, ran: Boolean(run), useRules }
+        ? {
+            fileKey: screeningKey(file),
+            edits,
+            reasons,
+            ran: Boolean(run),
+            useRules,
+          }
         : undefined,
     });
-  }, [run, dataFile, edits, useRules]);
+  }, [run, dataFile, edits, reasons, useRules]);
 
   const resumeRun = useRef(Boolean(restored?.ran));
   useEffect(() => {
@@ -144,11 +160,33 @@ export default function ScreeningPage({
       else next[cell] = value;
       return next;
     });
+    // 원래 값으로 되돌리면 그 셀의 사유도 지운다
+    if (value === original) setReason(cell, "");
+  }
+
+  function setReason(cell: string, reason: string) {
+    setReasons((current) => {
+      const next = { ...current };
+      if (reason) next[cell] = reason;
+      else delete next[cell];
+      return next;
+    });
+  }
+
+  function clearEdits() {
+    setEdits({});
+    setReasons({});
   }
 
   async function applyEdits(): Promise<DataFile | null> {
     if (!run) return null;
     if (!pendingCount) return run.file;
+    if (!worker.trim()) {
+      setEditError(
+        "화면 오른쪽 위의 [작업자]에 이름을 입력해야 수정을 반영할 수 있습니다.",
+      );
+      return null;
+    }
 
     setApplying(true);
     setEditError("");
@@ -163,10 +201,14 @@ export default function ScreeningPage({
         cell,
         value,
         issue: [...(issuesByCell.get(cell) ?? [])].join(", "),
+        reason: reasons[cell] ?? "",
       }));
 
       const { sheet } = run.result;
-      const bytes = await engine.applyEdits(run.file.bytes, sheet, list);
+      const bytes = await engine.applyEdits(run.file.bytes, sheet, list, {
+        changedBy: worker.trim(),
+        fileName: run.file.name,
+      });
       const file: DataFile = {
         ...run.file,
         bytes,
@@ -183,7 +225,7 @@ export default function ScreeningPage({
       setUnsaved(true);
 
       await screen(file);
-      setEdits({});
+      clearEdits();
       return file;
     } catch (e) {
       setEditError(`수정 내용을 반영하지 못했습니다: ${errorText(e)}`);
@@ -276,23 +318,31 @@ export default function ScreeningPage({
       {run && (!dataFile || dataFile.bytes === run.file.bytes) && (
         <Results
           run={run}
-          currentFile={dataFile?.bytes === run.file.bytes && dataFile.info.sheet === run.result.sheet ? dataFile : null}
+          currentFile={
+            dataFile?.bytes === run.file.bytes &&
+            dataFile.info.sheet === run.result.sheet
+              ? dataFile
+              : null
+          }
           engine={engine}
           onRecodeBusy={setRecoding}
           recodeDisabled={!ready}
           onRecodeApplied={async (file) => {
             onDataFile(file);
             setRun(null);
-            setEdits({});
+            clearEdits();
             setEditError("");
             setUnsaved(true);
             await screen(file);
           }}
           edits={edits}
+          reasons={reasons}
+          onReason={setReason}
+          worker={worker}
           busy={applying || running || recoding}
           editError={editError}
           onEdit={editCell}
-          onDiscard={() => setEdits({})}
+          onDiscard={clearEdits}
           onApply={applyEdits}
           onSave={save}
         />
@@ -311,6 +361,9 @@ interface ResultsProps {
   recodeDisabled: boolean;
   onRecodeApplied: (file: DataFile) => Promise<void>;
   edits: Edits;
+  reasons: Edits;
+  onReason: (cell: string, reason: string) => void;
+  worker: string;
   busy: boolean;
   editError: string;
   onEdit: (cell: string, value: string, original: string) => void;
@@ -327,6 +380,9 @@ function Results({
   recodeDisabled,
   onRecodeApplied,
   edits,
+  reasons,
+  onReason,
+  worker,
   busy,
   editError,
   onEdit,
@@ -346,7 +402,12 @@ function Results({
   const [shown, setShown] = useState(PAGE_SIZE);
   const [view, setView] = useState<"grid" | "list">("grid");
   const [selected, setSelected] = useState<CellPos | null>(null);
-  const [bulk, setBulk] = useState<{ column: string; source: string; bytes: ArrayBuffer; sheet: string } | null>(null);
+  const [bulk, setBulk] = useState<{
+    column: string;
+    source: string;
+    bytes: ArrayBuffer;
+    sheet: string;
+  } | null>(null);
 
   const issueTypes = useMemo(
     () => [...new Set(result.issues.map((i) => i.Issue_Type))],
@@ -406,9 +467,6 @@ function Results({
           </span>
         </h2>
         <div className="toolbar">
-          <button className="button" onClick={download} disabled={busy}>
-            결과 엑셀 다운로드
-          </button>
           <button
             className="button button-primary"
             onClick={onSave}
@@ -446,6 +504,12 @@ function Results({
         </div>
       )}
 
+      {pendingCount > 0 && !worker.trim() && (
+        <p className="message message-warning">
+          수정을 반영하려면 우측 상단 작업자란에 이름을 입력하세요. 수정 기록에
+          누가 고쳤는지 남습니다.
+        </p>
+      )}
       {editError && <p className="message message-error">{editError}</p>}
 
       <div className="stats">
@@ -493,31 +557,47 @@ function Results({
 
       {view === "grid" ? (
         <>
-        {bulk && currentFile && bulk.bytes === currentFile.bytes && bulk.sheet === currentFile.info.sheet && (
-          <RecodePanel
-            key={`${bulk.sheet}:${bulk.column}:${bulk.source}`}
-            file={currentFile}
-            engine={engine}
-            column={bulk.column}
-            initialSource={bulk.source}
-            onClose={() => setBulk(null)}
-            disabled={busy || recodeDisabled || pendingCount > 0}
-            pendingEdits={pendingCount > 0}
-            onBusy={onRecodeBusy}
-            onApplied={onRecodeApplied}
+          {bulk &&
+            currentFile &&
+            bulk.bytes === currentFile.bytes &&
+            bulk.sheet === currentFile.info.sheet && (
+              <RecodePanel
+                key={`${bulk.sheet}:${bulk.column}:${bulk.source}`}
+                file={currentFile}
+                engine={engine}
+                column={bulk.column}
+                initialSource={bulk.source}
+                onClose={() => setBulk(null)}
+                disabled={busy || recodeDisabled || pendingCount > 0}
+                pendingEdits={pendingCount > 0}
+                onBusy={onRecodeBusy}
+                onApplied={onRecodeApplied}
+                changedBy={worker}
+              />
+            )}
+          <DataGrid
+            table={result.table}
+            issues={result.issues}
+            edits={edits}
+            selected={selected}
+            disabled={busy}
+            onSelect={setSelected}
+            onEdit={onEdit}
+            reasons={reasons}
+            onReason={onReason}
+            codebook={run.file.codebook}
+            onBulkChange={
+              currentFile && !currentFile.codebook
+                ? (column, source) =>
+                    setBulk({
+                      column,
+                      source,
+                      bytes: currentFile.bytes,
+                      sheet: currentFile.info.sheet,
+                    })
+                : undefined
+            }
           />
-        )}
-        <DataGrid
-          table={result.table}
-          issues={result.issues}
-          edits={edits}
-          selected={selected}
-          disabled={busy}
-          onSelect={setSelected}
-          onEdit={onEdit}
-          codebook={run.file.codebook}
-          onBulkChange={currentFile && !currentFile.codebook ? (column, source) => setBulk({ column, source, bytes: currentFile.bytes, sheet: currentFile.info.sheet }) : undefined}
-        />
         </>
       ) : result.issues.length === 0 ? (
         <p className="message message-ok">발견된 문제가 없습니다.</p>
@@ -569,6 +649,8 @@ function Results({
             disabled={busy}
             onEdit={onEdit}
             onShow={showInGrid}
+            reasons={reasons}
+            onReason={onReason}
             codebook={run.file.codebook}
           />
           {filtered.length > shown && (
@@ -609,6 +691,8 @@ interface IssueTableProps {
   disabled: boolean;
   onEdit: (cell: string, value: string, original: string) => void;
   onShow: (issue: Issue) => void;
+  reasons: Edits;
+  onReason: (cell: string, reason: string) => void;
   codebook?: Codebook;
 }
 
@@ -651,16 +735,25 @@ function CodeLegend({ codebook }: { codebook: Codebook }) {
   );
 }
 
+const REASON_LIST_ID = "reason-presets";
+
 function IssueTable({
   issues,
   edits,
   disabled,
   onEdit,
   onShow,
+  reasons,
+  onReason,
   codebook,
 }: IssueTableProps) {
   return (
     <div className="table-wrap">
+      <datalist id={REASON_LIST_ID}>
+        {REASON_PRESETS.map((reason) => (
+          <option key={reason} value={reason} />
+        ))}
+      </datalist>
       <table>
         <thead>
           <tr>
@@ -669,6 +762,7 @@ function IssueTable({
             <th>컬럼</th>
             <th>값</th>
             <th>수정값</th>
+            <th>메모</th>
             <th>문제 유형</th>
             <th>설명</th>
           </tr>
@@ -716,6 +810,21 @@ function IssueTable({
                     value={edits[issue.Cell]}
                     disabled={disabled}
                     onEdit={onEdit}
+                  />
+                ) : (
+                  <span className="muted">—</span>
+                )}
+              </td>
+              <td>
+                {edits[issue.Cell] !== undefined ? (
+                  <input
+                    className="reason-input"
+                    list={REASON_LIST_ID}
+                    placeholder="고친 이유, 메모 등"
+                    aria-label={`${issue.Cell} 메모`}
+                    disabled={disabled}
+                    value={reasons[issue.Cell] ?? ""}
+                    onChange={(e) => onReason(issue.Cell, e.target.value)}
                   />
                 ) : (
                   <span className="muted">—</span>

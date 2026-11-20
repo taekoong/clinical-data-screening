@@ -14,9 +14,11 @@ interface Props {
   column: string;
   initialSource: string;
   onClose: () => void;
+  // Change_Log에 남길 작업자 이름
+  changedBy: string;
 }
 
-export default function RecodePanel({ file, engine, disabled, pendingEdits, onBusy, onApplied, column, initialSource, onClose }: Props) {
+export default function RecodePanel({ file, engine, disabled, pendingEdits, onBusy, onApplied, column, initialSource, onClose, changedBy }: Props) {
   const [source, setSource] = useState(initialSource);
   const [target, setTarget] = useState("");
   const [busy, setBusy] = useState(false);
@@ -64,11 +66,18 @@ export default function RecodePanel({ file, engine, disabled, pendingEdits, onBu
 
   async function apply() {
     if (locked || !currentPreview?.edits.length) return;
+    if (!changedBy.trim()) {
+      setError({ file, message: "화면 오른쪽 위의 [작업자]에 이름을 입력해야 반영할 수 있습니다." });
+      return;
+    }
     setBusy(true);
     onBusy(true);
     setError(null);
     try {
-      const bytes = await engine.applyEdits(file.bytes, file.info.sheet, currentPreview.edits);
+      const bytes = await engine.applyEdits(file.bytes, file.info.sheet, currentPreview.edits, {
+        changedBy: changedBy.trim(),
+        fileName: file.name,
+      });
       const info = await engine.inspect(bytes, file.info.sheet);
       // 다른 탭에서 파일이나 시트를 바꾼 경우, 이전 작업 결과로 덮어쓰지 않는다.
       if (latestFile.current !== file) return;

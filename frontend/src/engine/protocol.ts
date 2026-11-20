@@ -53,6 +53,8 @@ export type WorkerRequest =
       sheet: string;
       edits: CellEdit[];
       changedAt: string;
+      changedBy: string;
+      fileName: string;
     }
   | {
       type: "exportAnalysis";

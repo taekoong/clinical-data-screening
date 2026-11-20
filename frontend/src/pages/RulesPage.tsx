@@ -211,10 +211,9 @@ export default function RulesPage({
         />
 
         <p className="muted small">
-          [규칙 파일로 내보내기]는 규칙을 JSON 파일로 내려받는 기능입니다.
-          누르지 않아도 이 브라우저에서는 편집한 규칙이 그대로 적용됩니다. 다른
-          PC나 다른 연구자와 함께 쓰려면 파일로 내보내 NAS 공유 폴더에 두고,
-          [규칙 파일 불러오기]로 엽니다.
+          [규칙 파일로 내보내기]는 규칙을 JSON 파일로 내려받는 기능입니다. 다른
+          PC나 다른 연구자와 함께 쓰려면 파일로 내보내 공유한 뒤 [규칙 파일
+          불러오기]로 엽니다.
         </p>
       </section>
 
@@ -347,8 +346,7 @@ export default function RulesPage({
 
           {tab !== "common" && (
             <p className="muted">
-              {TYPE_TABS.find((t) => t.key === tab)!.help} 숫자는 변수 이름 옆
-              '규칙 수/변수 수'입니다. 유형은 변수 설정에서 바꿉니다.
+              {TYPE_TABS.find((t) => t.key === tab)!.help}
             </p>
           )}
 

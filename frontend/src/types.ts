@@ -44,6 +44,7 @@ export interface CellEdit {
   issue: string;
   as_text?: boolean;
   expected_before?: string;
+  reason?: string;
 }
 
 export interface RecodePreview {
