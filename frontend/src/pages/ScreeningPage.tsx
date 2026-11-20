@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { DataFile, RulesDraft } from "../App";
-import DataFilePicker from "../components/DataFilePicker";
 import { parseCell, type CellPos } from "../cells";
 import DataGrid from "../components/DataGrid";
 import ValueText from "../components/ValueText";
@@ -39,6 +38,16 @@ interface Props {
   onEditRules: () => void;
   // Change_Log에 남길 작업자 이름
   worker: string;
+  // 단계 표시줄에 보여 줄 진행 상태
+  onStatus: (status: ScreeningStatus) => void;
+}
+
+export interface ScreeningStatus {
+  ran: boolean;
+  issues: number;
+  pending: number;
+  // 코드 바꾸기·수정 반영 중에는 파일을 바꾸지 못하게 한다
+  busy: boolean;
 }
 
 interface Run {
@@ -58,6 +67,7 @@ export default function ScreeningPage({
   onDraft,
   onEditRules,
   worker,
+  onStatus,
 }: Props) {
   // 새로고침 전에 고치던 값 (같은 파일일 때만 이어서 쓴다)
   const [restored] = useState(() => {
@@ -96,6 +106,17 @@ export default function ScreeningPage({
         : undefined,
     });
   }, [run, dataFile, edits, reasons, useRules]);
+
+  const issueCount = run?.result.summary.issue_count ?? 0;
+  const busy = recoding || applying;
+  useEffect(() => {
+    onStatus({
+      ran: Boolean(run),
+      issues: issueCount,
+      pending: pendingCount,
+      busy,
+    });
+  }, [onStatus, run, issueCount, pendingCount, busy]);
 
   const resumeRun = useRef(Boolean(restored?.ran));
   useEffect(() => {
@@ -249,17 +270,7 @@ export default function ScreeningPage({
   return (
     <div className="stack">
       <section className="card">
-        <h2>1. 데이터 파일</h2>
-        <DataFilePicker
-          engine={engine}
-          ready={ready && !recoding}
-          dataFile={dataFile}
-          onDataFile={onDataFile}
-        />
-      </section>
-
-      <section className="card">
-        <h2>2. 검사 규칙</h2>
+        <h2>검사 규칙</h2>
         <div className="picker">
           <label className="inline">
             <input
@@ -450,11 +461,6 @@ function Results({
   function showInGrid(issue: Issue) {
     setSelected(parseCell(issue.Cell));
     setView("grid");
-  }
-
-  function download() {
-    const blob = new Blob([result.report as BlobPart], { type: XLSX_TYPE });
-    downloadBlob(blob, `${fileStem(run.file.name)}_screening.xlsx`);
   }
 
   return (

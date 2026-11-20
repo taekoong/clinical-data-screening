@@ -72,9 +72,10 @@ export default function VariablesPage({
   if (!dataFile) {
     return (
       <section className="card">
-        <h2>요약·코딩</h2>
+        <h2>내보내기</h2>
         <p className="muted">
-          아직 불러온 데이터가 없습니다. [변수 설정] 탭에서 파일을 올리세요.
+          아직 불러온 데이터가 없습니다. 위의 [엑셀 파일 선택]으로 파일을
+          올리세요.
         </p>
         <button className="button" onClick={onGoToSetup}>
           변수 설정으로 가기

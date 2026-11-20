@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPyodideEngine, type EngineStatus } from "./engine/engine";
-import { emptyForm, type RulesForm } from "./rulesForm";
-import type { Codebook, WorkbookInfo, VariableType } from "./types";
-import ScreeningPage from "./pages/ScreeningPage";
+import {
+  emptyForm,
+  formErrors,
+  formToRules,
+  type RulesForm,
+} from "./rulesForm";
+import type { Codebook, Rules, WorkbookInfo, VariableType } from "./types";
+import DataFilePicker from "./components/DataFilePicker";
+import ScreeningPage, { type ScreeningStatus } from "./pages/ScreeningPage";
 import RulesPage from "./pages/RulesPage";
 import VariableSetupPage from "./pages/VariableSetupPage";
 import VariablesPage from "./pages/VariablesPage";
@@ -39,6 +45,27 @@ export type AutoSave =
 type Tab = "setup" | "rules" | "screening" | "summary";
 const TABS: Tab[] = ["setup", "rules", "screening", "summary"];
 const isTab = (value: unknown): value is Tab => TABS.includes(value as Tab);
+
+const STEP_LABELS: Record<Tab, string> = {
+  setup: "변수 설정",
+  rules: "검사 규칙",
+  screening: "스크리닝",
+  summary: "내보내기",
+};
+
+type StepTone = "done" | "todo" | "warn" | "idle";
+
+// 변수 하나에 건 검사를 규칙 하나로 센다 (ID 형식·중복 기준은 각각 하나)
+function countRules(rules: Rules) {
+  return (
+    Object.keys(rules.numeric_columns ?? {}).length +
+    Object.keys(rules.categorical_columns ?? {}).length +
+    Object.keys(rules.date_columns ?? {}).length +
+    (rules.cross_checks?.length ?? 0) +
+    (rules.id_column ? 1 : 0) +
+    (rules.duplicate_keys?.length ? 1 : 0)
+  );
+}
 
 const DRAFT_KEY = "clinical-screening:rules-draft";
 const WORKER_KEY = "clinical-screening:worker";
@@ -114,6 +141,12 @@ function Workbench({ initial }: { initial: Workspace }) {
   const [autoSave, setAutoSave] = useState<AutoSave>(null);
   const [worker, setWorker] = useState(loadWorker);
   const [resumed, setResumed] = useState(Boolean(initial.dataFile));
+  const [screening, setScreening] = useState<ScreeningStatus>({
+    ran: false,
+    issues: 0,
+    pending: 0,
+    busy: false,
+  });
   // [새로 시작]하면 모든 화면을 처음 상태로 다시 연다
   const [session, setSession] = useState(0);
 
@@ -135,6 +168,39 @@ function Workbench({ initial }: { initial: Workspace }) {
     setResumed(false);
     setSession((n) => n + 1);
   }
+
+  function go(next: Tab) {
+    setTab(next);
+    window.scrollTo({ top: 0 });
+  }
+
+  const ruleErrors = formErrors(draft.form).length;
+  const ruleCount = countRules(formToRules(draft.form));
+  const steps: Record<Tab, { text: string; tone: StepTone }> = {
+    setup: !dataFile
+      ? { text: "파일 필요", tone: "idle" }
+      : dataFile.codebook
+        ? { text: "코드 적용됨", tone: "done" }
+        : { text: "코드 적용 전", tone: "todo" },
+    rules: ruleErrors
+      ? { text: "입력 오류 있음", tone: "warn" }
+      : ruleCount
+        ? { text: `규칙 ${ruleCount}개`, tone: "done" }
+        : { text: "규칙 없음", tone: "todo" },
+    screening: !screening.ran
+      ? { text: "아직 안 함", tone: dataFile ? "todo" : "idle" }
+      : screening.pending
+        ? { text: `반영 안 한 수정 ${screening.pending}건`, tone: "warn" }
+        : screening.issues
+          ? { text: `확인할 문제 ${screening.issues}건`, tone: "warn" }
+          : { text: "문제 없음", tone: "done" },
+    summary: dataFile
+      ? { text: "받을 수 있음", tone: "todo" }
+      : { text: "파일 필요", tone: "idle" },
+  };
+  const index = TABS.indexOf(tab);
+  const prev = TABS[index - 1];
+  const next = TABS[index + 1];
 
   // 규칙은 고칠 때마다 이 브라우저에 자동 저장되고, 스크리닝에도 바로 적용된다
   function updateDraft(next: RulesDraft) {
@@ -195,36 +261,39 @@ function Workbench({ initial }: { initial: Workspace }) {
         </div>
       )}
 
-      <nav className="tabs" role="tablist">
-        <button
-          role="tab"
-          aria-selected={tab === "setup"}
-          onClick={() => setTab("setup")}
-        >
-          변수 설정
-        </button>
-        <button
-          role="tab"
-          aria-selected={tab === "rules"}
-          onClick={() => setTab("rules")}
-        >
-          규칙 편집
-        </button>
-        <button
-          role="tab"
-          aria-selected={tab === "screening"}
-          onClick={() => setTab("screening")}
-        >
-          스크리닝
-        </button>
-        <button
-          role="tab"
-          aria-selected={tab === "summary"}
-          onClick={() => setTab("summary")}
-        >
-          요약·코딩
-        </button>
+      {/* 단계는 순서대로 안내하지만 잠그지 않는다 (언제든 앞뒤로 옮겨 다닐 수 있다) */}
+      <nav className="steps" aria-label="작업 단계">
+        <ol>
+          {TABS.map((t, i) => (
+            <li key={t}>
+              <button
+                className={`step step-${steps[t].tone}`}
+                aria-current={tab === t ? "step" : undefined}
+                onClick={() => go(t)}
+              >
+                <span className="step-number">
+                  {steps[t].tone === "done" ? "✓" : i + 1}
+                </span>
+                <span className="step-text">
+                  <span className="step-label">{STEP_LABELS[t]}</span>
+                  <span className="step-status">{steps[t].text}</span>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ol>
       </nav>
+
+      {/* 데이터 파일은 모든 단계가 함께 쓰므로 맨 위에서 한 번만 고른다 */}
+      <section className="card file-bar">
+        <span className="file-bar-label">데이터 파일</span>
+        <DataFilePicker
+          engine={engine}
+          ready={status.state === "ready" && !screening.busy}
+          dataFile={dataFile}
+          onDataFile={setDataFile}
+        />
+      </section>
 
       {/* 탭을 옮겨도 검사 결과와 고치던 값이 사라지지 않도록 모든 화면을 유지하고 숨기기만 한다 */}
       <main key={session}>
@@ -236,7 +305,7 @@ function Workbench({ initial }: { initial: Workspace }) {
             onDataFile={setDataFile}
             draft={draft}
             onDraft={updateDraft}
-            onNext={() => setTab("rules")}
+            onNext={() => go("rules")}
           />
         </div>
         <div hidden={tab !== "screening"}>
@@ -247,8 +316,9 @@ function Workbench({ initial }: { initial: Workspace }) {
             onDataFile={setDataFile}
             draft={draft}
             onDraft={updateDraft}
-            onEditRules={() => setTab("rules")}
+            onEditRules={() => go("rules")}
             worker={worker}
+            onStatus={setScreening}
           />
         </div>
         <div hidden={tab !== "rules"}>
@@ -256,11 +326,10 @@ function Workbench({ initial }: { initial: Workspace }) {
             engine={engine}
             ready={status.state === "ready"}
             dataFile={dataFile}
-            onDataFile={setDataFile}
             draft={draft}
             onDraft={updateDraft}
             autoSave={autoSave}
-            onStartScreening={() => setTab("screening")}
+            onStartScreening={() => go("screening")}
           />
         </div>
         <div hidden={tab !== "summary"}>
@@ -270,10 +339,24 @@ function Workbench({ initial }: { initial: Workspace }) {
             dataFile={dataFile}
             onDataFile={setDataFile}
             draft={draft}
-            onGoToSetup={() => setTab("setup")}
+            onGoToSetup={() => go("setup")}
           />
         </div>
       </main>
+
+      <div className="step-nav">
+        {prev && (
+          <button className="button button-ghost" onClick={() => go(prev)}>
+            ← 이전: {STEP_LABELS[prev]}
+          </button>
+        )}
+        <span className="grow" />
+        {next && (
+          <button className="button" onClick={() => go(next)}>
+            다음: {STEP_LABELS[next]} →
+          </button>
+        )}
+      </div>
     </div>
   );
 }

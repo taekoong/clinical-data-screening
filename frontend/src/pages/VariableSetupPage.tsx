@@ -1,6 +1,5 @@
 import { useState, type KeyboardEvent } from "react";
 import type { DataFile, RulesDraft } from "../App";
-import DataFilePicker from "../components/DataFilePicker";
 import type { ScreeningEngine } from "../engine/engine";
 import {
   getRange,
@@ -55,15 +54,16 @@ export default function VariableSetupPage({
 }: Props) {
   return (
     <div className="stack">
-      <section className="card">
-        <h2>1. 데이터 파일</h2>
-        <DataFilePicker
-          engine={engine}
-          ready={ready}
-          dataFile={dataFile}
-          onDataFile={onDataFile}
-        />
-      </section>
+      {!dataFile && (
+        <section className="card">
+          <h2>변수 설정</h2>
+          <p className="muted">
+            {ready
+              ? "위의 [엑셀 파일 선택]으로 데이터를 올리면 변수마다 유형과 값을 정할 수 있습니다."
+              : "검사 엔진을 준비하는 중입니다. 잠시 후 위에서 엑셀 파일을 고르세요."}
+          </p>
+        </section>
+      )}
       {/* 다른 파일이나 시트를 고르면 보고 있던 변수를 새로 고른다 */}
       {dataFile && (
         <Setup
@@ -280,7 +280,7 @@ function Setup({
   return (
     <section className="card">
       <div className="section-header">
-        <h2>2. 변수 유형과 값 설정</h2>
+        <h2>변수 유형과 값 설정</h2>
         <div className="toolbar">
           {applied ? (
             <>
@@ -292,7 +292,7 @@ function Setup({
                 변수 규칙 수정
               </button>
               <button className="button button-primary" onClick={onNext}>
-                다음: 규칙 편집 →
+                다음: 검사 규칙 →
               </button>
             </>
           ) : (
@@ -301,14 +301,14 @@ function Setup({
               disabled={exporting || codeErrors.length > 0}
               onClick={applyCodes}
             >
-              {canExport ? "코드 적용하고 다음 →" : "다음: 규칙 편집 →"}
+              {canExport ? "코드 적용하고 다음 →" : "다음: 검사 규칙 →"}
             </button>
           )}
         </div>
       </div>
       <p className="muted">
         유형은 값을 보고 추천해 둔 것이니 틀리면 바꾸세요. 여기서 정한 유형과
-        허용 범위는 규칙 편집, 스크리닝, 요약·코딩에 모두 적용됩니다. 범주형은
+        허용 범위는 검사 규칙, 스크리닝, 내보내기에 모두 적용됩니다. 범주형은
         원본 값마다 숫자 코드와 라벨을 정하고, 같은 코드를 입력하면 하나로
         묶입니다. 코드는 자동으로 채운 초안이니 확인하고, 오류로 보이는 값(X
         등)은 코드를 비워 두세요.

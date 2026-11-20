@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { AutoSave, DataFile, RulesDraft } from "../App";
-import DataFilePicker from "../components/DataFilePicker";
 import RulesFileButton from "../components/RulesFileButton";
 import type { ScreeningEngine } from "../engine/engine";
 import { downloadBlob, errorText } from "../files";
@@ -27,7 +26,6 @@ interface Props {
   engine: ScreeningEngine;
   ready: boolean;
   dataFile: DataFile | null;
-  onDataFile: (file: DataFile | null) => void;
   draft: RulesDraft;
   onDraft: (draft: RulesDraft) => void;
   autoSave: AutoSave;
@@ -68,7 +66,6 @@ export default function RulesPage({
   engine,
   ready,
   dataFile,
-  onDataFile,
   draft,
   onDraft,
   autoSave,
@@ -220,15 +217,10 @@ export default function RulesPage({
       <section className="card">
         <h2>참고할 데이터</h2>
         <p className="muted">
-          데이터를 불러오면 컬럼 목록과 관측값을 보면서 규칙을 만들 수 있습니다.
-          데이터는 저장되지 않습니다.
+          {dataFile
+            ? `${dataFile.name}의 컬럼 목록과 관측값을 보면서 규칙을 만들 수 있습니다.`
+            : "위에서 데이터 파일을 올리면 컬럼 목록과 관측값을 보면서 규칙을 만들 수 있습니다."}
         </p>
-        <DataFilePicker
-          engine={engine}
-          ready={ready}
-          dataFile={dataFile}
-          onDataFile={onDataFile}
-        />
         {dataFile && (
           <button
             className="button button-ghost"
@@ -915,7 +907,7 @@ function SaveStatus({
     <div className="message message-ok save-status">
       <span className="grow">
         <strong>✓ 자동 저장됨{time && ` · ${time}`}</strong> 편집한 규칙은 이
-        브라우저에 저장되고 [스크리닝] 탭에 바로 적용됩니다. 따로 저장 버튼을
+        브라우저에 저장되고 [스크리닝] 단계에 바로 적용됩니다. 따로 저장 버튼을
         누르지 않아도 됩니다.
       </span>
       <button className="button" onClick={onStartScreening}>
