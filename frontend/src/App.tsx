@@ -317,6 +317,7 @@ function Workbench({ initial }: { initial: Workspace }) {
             draft={draft}
             onDraft={updateDraft}
             onEditRules={() => go("rules")}
+            onGoToExport={() => go("summary")}
             worker={worker}
             onStatus={setScreening}
           />
@@ -340,6 +341,8 @@ function Workbench({ initial }: { initial: Workspace }) {
             onDataFile={setDataFile}
             draft={draft}
             onGoToSetup={() => go("setup")}
+            pendingEdits={screening.pending}
+            onGoToScreening={() => go("screening")}
           />
         </div>
       </main>

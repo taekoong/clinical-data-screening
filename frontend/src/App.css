@@ -923,21 +923,6 @@ table.compact td {
   gap: 4px;
 }
 
-.range-inputs {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.range-inputs input {
-  width: 92px;
-  padding: 3px 8px;
-}
-
-.range-inputs input[type="date"] {
-  width: 140px;
-}
-
 input[aria-invalid="true"] {
   border-color: var(--error);
 }

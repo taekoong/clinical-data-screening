@@ -56,9 +56,12 @@ interface Props {
   ready: boolean;
   dataFile: DataFile | null;
   onDataFile: (file: DataFile | null) => void;
-  // 허용 범위는 변수 설정·규칙 편집 탭과 같은 값이다
+  // 허용 범위는 검사 규칙 단계와 같은 값이다
   draft: RulesDraft;
   onGoToSetup: () => void;
+  // 스크리닝에서 고쳤지만 아직 파일에 반영하지 않은 셀 수 (받는 파일에 들어가지 않는다)
+  pendingEdits: number;
+  onGoToScreening: () => void;
 }
 
 export default function VariablesPage({
@@ -68,6 +71,8 @@ export default function VariablesPage({
   onDataFile,
   draft,
   onGoToSetup,
+  pendingEdits,
+  onGoToScreening,
 }: Props) {
   if (!dataFile) {
     return (
@@ -94,6 +99,8 @@ export default function VariablesPage({
         onDataFile={onDataFile}
         draft={draft}
         onGoToSetup={onGoToSetup}
+        pendingEdits={pendingEdits}
+        onGoToScreening={onGoToScreening}
       />
     </div>
   );
@@ -114,6 +121,8 @@ function Variables({
   onDataFile,
   draft,
   onGoToSetup,
+  pendingEdits,
+  onGoToScreening,
 }: Props & { dataFile: DataFile }) {
   const profiles = dataFile.info.columns;
   // 새로고침 전의 변수 선택·구간 설정 (같은 파일·시트일 때만)
@@ -567,7 +576,7 @@ function Variables({
                   <h3 className="detail-title">{active}</h3>
                   <span className="type-tag">{TYPE_LABELS[activeType]}</span>
                   <button className="link-button small" onClick={onGoToSetup}>
-                    유형·허용 범위 바꾸기
+                    유형 바꾸기 (① 변수 설정)
                   </button>
                   <span className="grow" />
                   <label className="inline small">
@@ -599,6 +608,15 @@ function Variables({
 
       <section className="card">
         <h2>2. 다운로드</h2>
+        {pendingEdits > 0 && (
+          <div className="message message-warning">
+            스크리닝에서 고친 셀 {pendingEdits}개가 아직 반영되지 않아 받는
+            파일에 들어가지 않습니다.{" "}
+            <button className="link-button" onClick={onGoToScreening}>
+              스크리닝으로 가서 반영하기
+            </button>
+          </div>
+        )}
         <p className="muted">
           체크한 {selected.size}개 변수가 들어갑니다
           {waiting > 0 && computing ? ` (${waiting}개 계산 중…)` : ""}. 결측과
@@ -620,6 +638,9 @@ function Variables({
               {dataFile.codebook
                 ? "원본 시트 + Analysis_Data(구간 열 포함) + Codebook + 요약 시트"
                 : `${dataFile.info.sheet} 시트에 구간 열 추가 + 요약 시트 (구간이 있으면 Codebook도)`}
+              {dataFile.editedCells
+                ? ` + Change_Log(스크리닝에서 고친 ${dataFile.editedCells}건의 수정 기록)`
+                : ""}
             </span>
             <span className="mono small">{dataFileName}</span>
             <button

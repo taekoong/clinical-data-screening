@@ -6,7 +6,7 @@ import ValueText from "../components/ValueText";
 import RulesFileButton from "../components/RulesFileButton";
 import RecodePanel from "../components/RecodePanel";
 import type { ScreeningEngine } from "../engine/engine";
-import { analysisFileName, downloadBlob, errorText, fileStem } from "../files";
+import { errorText } from "../files";
 import {
   isNumericIssue,
   issueLabel,
@@ -25,9 +25,6 @@ import {
   type Severity,
 } from "../types";
 
-const XLSX_TYPE =
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-
 interface Props {
   engine: ScreeningEngine;
   ready: boolean;
@@ -36,6 +33,7 @@ interface Props {
   draft: RulesDraft;
   onDraft: (draft: RulesDraft) => void;
   onEditRules: () => void;
+  onGoToExport: () => void;
   // Change_Log에 남길 작업자 이름
   worker: string;
   // 단계 표시줄에 보여 줄 진행 상태
@@ -66,6 +64,7 @@ export default function ScreeningPage({
   draft,
   onDraft,
   onEditRules,
+  onGoToExport,
   worker,
   onStatus,
 }: Props) {
@@ -85,7 +84,6 @@ export default function ScreeningPage({
   const [reasons, setReasons] = useState<Edits>(restored?.reasons ?? {});
   const [applying, setApplying] = useState(false);
   const [editError, setEditError] = useState("");
-  const [unsaved, setUnsaved] = useState(false);
   const [recoding, setRecoding] = useState(false);
   const rules = useMemo(() => formToRules(draft.form), [draft.form]);
   const ruleCount = Object.keys(rules).length;
@@ -130,14 +128,6 @@ export default function ScreeningPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, dataFile]);
 
-  // 고친 내용을 저장하지 않고 창을 닫으려 하면 확인 창 띄우기
-  useEffect(() => {
-    if (!unsaved && !pendingCount) return;
-    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [unsaved, pendingCount]);
-
   async function screen(file: DataFile) {
     setRunning(true);
     setErrors([]);
@@ -170,7 +160,6 @@ export default function ScreeningPage({
       return;
     setEdits({});
     setEditError("");
-    setUnsaved(Boolean(dataFile.editedCells));
     screen(dataFile);
   }
 
@@ -243,7 +232,6 @@ export default function ScreeningPage({
 
       onDataFile(file);
       setRun({ file, result: run.result });
-      setUnsaved(true);
 
       await screen(file);
       clearEdits();
@@ -254,17 +242,6 @@ export default function ScreeningPage({
     } finally {
       setApplying(false);
     }
-  }
-
-  async function save() {
-    const file = await applyEdits();
-    if (!file) return;
-    const stem = fileStem(file.name).replace(/_corrected$/, "");
-    downloadBlob(
-      new Blob([file.bytes], { type: XLSX_TYPE }),
-      file.codebook ? analysisFileName(file.name) : `${stem}_corrected.xlsx`,
-    );
-    setUnsaved(false);
   }
 
   return (
@@ -343,7 +320,6 @@ export default function ScreeningPage({
             setRun(null);
             clearEdits();
             setEditError("");
-            setUnsaved(true);
             await screen(file);
           }}
           edits={edits}
@@ -355,7 +331,7 @@ export default function ScreeningPage({
           onEdit={editCell}
           onDiscard={clearEdits}
           onApply={applyEdits}
-          onSave={save}
+          onGoToExport={onGoToExport}
         />
       )}
     </div>
@@ -380,7 +356,7 @@ interface ResultsProps {
   onEdit: (cell: string, value: string, original: string) => void;
   onDiscard: () => void;
   onApply: () => void;
-  onSave: () => void;
+  onGoToExport: () => void;
 }
 
 function Results({
@@ -399,7 +375,7 @@ function Results({
   onEdit,
   onDiscard,
   onApply,
-  onSave,
+  onGoToExport,
 }: ResultsProps) {
   const { result } = run;
   const pendingCount = Object.keys(edits).length;
@@ -472,15 +448,13 @@ function Results({
             · {run.file.name} / {result.sheet}
           </span>
         </h2>
-        <div className="toolbar">
-          <button
-            className="button button-primary"
-            onClick={onSave}
-            disabled={busy || (!pendingCount && !editedCells)}
-          >
-            수정한 파일 저장
-          </button>
-        </div>
+        {editedCells > 0 && !pendingCount && (
+          <div className="toolbar">
+            <button className="button button-primary" onClick={onGoToExport}>
+              다음: 내보내기 →
+            </button>
+          </div>
+        )}
       </div>
 
       {(pendingCount > 0 || editedCells > 0) && (
@@ -490,7 +464,9 @@ function Results({
               ? `고친 셀 ${pendingCount}개가 아직 반영되지 않았습니다.`
               : `이 파일에 수정 ${editedCells}건이 반영되어 있습니다.`}{" "}
             <span className="muted">
-              저장한 파일의 Change_Log 시트에 수정 전·후 값이 기록됩니다.
+              {pendingCount > 0
+                ? "[반영하고 다시 검사]를 눌러야 파일에 들어갑니다."
+                : "④ 내보내기에서 받는 파일의 Change_Log 시트에 수정 전·후 값이 기록됩니다."}
             </span>
           </span>
           {pendingCount > 0 && (

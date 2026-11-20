@@ -1,12 +1,7 @@
 import { useState, type KeyboardEvent } from "react";
 import type { DataFile, RulesDraft } from "../App";
 import type { ScreeningEngine } from "../engine/engine";
-import {
-  getRange,
-  setAllowMissing,
-  setRange,
-  type RulesForm,
-} from "../rulesForm";
+import { getRange, setAllowMissing, type RulesForm } from "../rulesForm";
 import type {
   CodeLevel,
   ColumnProfile,
@@ -37,7 +32,7 @@ interface Props {
   ready: boolean;
   dataFile: DataFile | null;
   onDataFile: (file: DataFile | null) => void;
-  // 허용 범위는 규칙 편집 탭의 숫자 범위·날짜 기간과 같은 값이다
+  // 결측 허용은 검사 규칙과 같은 값이고, 허용 범위는 보여 주기만 한다
   draft: RulesDraft;
   onDraft: (draft: RulesDraft) => void;
   onNext: () => void;
@@ -307,8 +302,9 @@ function Setup({
         </div>
       </div>
       <p className="muted">
-        유형은 값을 보고 추천해 둔 것이니 틀리면 바꾸세요. 여기서 정한 유형과
-        허용 범위는 검사 규칙, 스크리닝, 내보내기에 모두 적용됩니다. 범주형은
+        유형은 값을 보고 추천해 둔 것이니 틀리면 바꾸세요. 여기서 정한 유형은
+        검사 규칙, 스크리닝, 내보내기에 모두 적용되고, 숫자·날짜의 허용
+        범위는 다음 단계인 검사 규칙에서 정합니다. 범주형은
         원본 값마다 숫자 코드와 라벨을 정하고, 같은 코드를 입력하면 하나로
         묶입니다. 코드는 자동으로 채운 초안이니 확인하고, 오류로 보이는 값(X
         등)은 코드를 비워 두세요.
@@ -463,7 +459,6 @@ function Setup({
                   profile={activeProfile}
                   type={typeOf(activeProfile)}
                   form={draft.form}
-                  onForm={(form) => onDraft({ ...draft, form })}
                 />
               )}
             </>
@@ -624,17 +619,15 @@ function example(p: ColumnProfile) {
 
 const toNum = (text: string) => (text.trim() === "" ? null : Number(text));
 
-// 관측된 값 범위를 보여 주고, 연구자가 허용 범위를 정한다 (규칙 편집 탭과 같은 값)
+// 관측된 값 범위를 보여 준다. 허용 범위는 검사 규칙 단계에서 정하고, 여기서는 정해 둔 범위와 비교만 한다
 function ValueRange({
   profile: p,
   type,
   form,
-  onForm,
 }: {
   profile: ColumnProfile;
   type: VariableType;
   form: RulesForm;
-  onForm: (form: RulesForm) => void;
 }) {
   if (type === "continuous" || type === "date") {
     const kind = type === "continuous" ? "numeric" : "dates";
@@ -642,80 +635,42 @@ function ValueRange({
     const observedType = type === "continuous" ? "numeric" : "date";
     const observed =
       p.type === observedType ? { min: p.min!, max: p.max! } : null;
+    const hasRange = Boolean(range.min.trim() || range.max.trim());
 
     let outside = false;
-    let badInput: boolean;
-    if (type === "continuous") {
-      const low = toNum(range.min);
-      const high = toNum(range.max);
-      badInput =
-        Number.isNaN(low) ||
-        Number.isNaN(high) ||
-        (low !== null && high !== null && low > high);
-      if (observed && !badInput)
+    if (observed && hasRange) {
+      if (type === "continuous") {
+        const low = toNum(range.min);
+        const high = toNum(range.max);
         outside =
           (low !== null && Number(observed.min) < low) ||
           (high !== null && Number(observed.max) > high);
-    } else {
-      badInput = !!range.min && !!range.max && range.min > range.max;
-      if (observed && !badInput)
+      } else {
         outside =
           (!!range.min && String(observed.min) < range.min) ||
           (!!range.max && String(observed.max) > range.max);
+      }
     }
-    const update = (min: string, max: string) =>
-      onForm(setRange(form, kind, p.column, min, max));
-    const inputType = type === "date" ? "date" : "text";
-    // 스크리닝의 숫자 범위 규칙은 최소와 최대가 모두 있어야 한다 (날짜 기간은 한쪽만 있어도 된다)
-    const oneSided =
-      type === "continuous" && !range.min.trim() !== !range.max.trim();
 
     return (
-      <div className="range-cell">
-        <div className={`small ${outside ? "text-error" : "muted"}`}>
+      <div className="range-cell small">
+        <div className={outside ? "text-error" : "muted"}>
           관측{" "}
           {observed
             ? `${observed.min} ~ ${observed.max}`
             : `(${type === "date" ? "날짜" : "숫자"} 값 없음)`}
           {outside && " · 허용 범위 밖 값 있음"}
         </div>
-        <div className="range-inputs small">
-          <span className="muted">허용</span>
-          <input
-            type={inputType}
-            inputMode="decimal"
-            aria-label={`${p.column} 허용 최소`}
-            aria-invalid={badInput}
-            placeholder="최소"
-            value={range.min}
-            onChange={(e) => update(e.target.value, range.max)}
-          />
-          ~
-          <input
-            type={inputType}
-            inputMode="decimal"
-            aria-label={`${p.column} 허용 최대`}
-            aria-invalid={badInput}
-            placeholder="최대"
-            value={range.max}
-            onChange={(e) => update(range.min, e.target.value)}
-          />
+        <div className="muted">
+          {hasRange
+            ? `허용 범위 ${range.min || "…"} ~ ${range.max || "…"} (② 검사 규칙에서 바꿉니다)`
+            : "허용 범위는 ② 검사 규칙에서 정합니다."}
         </div>
-        {badInput && (
-          <div className="text-error small">
-            최소가 최대보다 크거나 숫자가 아닙니다.
-          </div>
-        )}
-        {oneSided && !badInput && (
-          <div className="text-error small">
-            스크리닝을 실행하려면 최소와 최대를 모두 입력하세요.
-          </div>
-        )}
       </div>
     );
   }
 
-  // 범주형: 규칙에 허용값이 있으면 그 밖의 값을 빨갛게 보여 준다 (허용값 수정은 규칙 편집 탭에서)
+  // 범주형: 규칙에 허용값이 있으면 그 밖의 값을 빨갛게 보여 준다 (허용값 수정은 검사 규칙 단계에서)
   const allowed = form.categorical.find(
     (r) => r.column.trim() === p.column,
   )?.allowed;
